@@ -37,7 +37,10 @@ function formatRoster(roster?: PlayerContext[]): string {
     return roster
         .map(p => {
             const statusIndicator = p.isInjured ? ` [${p.injuryStatus}]` : '';
-            return `- ${p.fullName} (${p.position})${statusIndicator}`;
+            const performance = (p.avgPoints !== undefined && p.gamesPlayed !== undefined)
+                ? ` [AVG: ${p.avgPoints.toFixed(1)}, GP: ${p.gamesPlayed}]`
+                : '';
+            return `- ${p.fullName} (${p.position})${statusIndicator}${performance}`;
         })
         .join('\n');
 }
@@ -57,6 +60,40 @@ function formatRosterSlots(slots: Record<string, unknown>): string {
     return entries
         .map(([slot, count]) => `${slot}: ${count}`)
         .join(', ');
+}
+
+/**
+ * Formats draft intelligence for prompt injection.
+ */
+function formatDraftIntelligence(draft?: any): string {
+    if (!draft || !draft.picks || draft.picks.length === 0) return 'No draft history available for analysis.';
+    return `Draft context is available for evaluation (Rounds: 1-${Math.max(...draft.picks.map((p: any) => p.roundId || 0))}). Analyze for pick value and busts.`;
+}
+
+/**
+ * Formats positional ratings for prompt injection.
+ */
+function formatPositionalRatings(ratings?: any): string {
+    if (!ratings || !ratings.positionalRatings) return 'Positional depth data not synchronized.';
+
+    const lines: string[] = [];
+    for (const [pos, posData] of Object.entries(ratings.positionalRatings)) {
+        const data = posData as any;
+        if (data.rating) {
+            lines.push(`- ${pos}: ${data.rating} rating`);
+        }
+    }
+    return lines.length > 0 ? lines.join('\n') : 'Positional ratings data incomplete.';
+}
+
+/**
+ * Formats pending transactions for prompt injection.
+ */
+function formatMarketIntelligence(pending?: any): string {
+    if (!pending || !Array.isArray(pending)) return 'No active market intel.';
+    const active = pending.filter((p: any) => p.status === 'PENDING');
+    if (active.length === 0) return 'No currently pending waivers or trade offers.';
+    return `${active.length} active transactions pending. Analyze for potential roster churn.`;
 }
 
 // ============================================================================
@@ -112,6 +149,13 @@ ${ctx.newsContext ? `
 ## Real-Time Intelligence (RAG)
 ${ctx.newsContext}
 ` : ''}
+
+## League Intelligence
+- **Draft Value**: ${formatDraftIntelligence(ctx.draftDetail)}
+- **Market Intel**: ${formatMarketIntelligence(ctx.pendingTransactions)}
+- **Positional Strength**:
+${formatPositionalRatings(ctx.positionalRatings)}
+- **Performance Trends**: Identify players who are underperforming their season average or carry high volume (GP).
 
 ## Instructions
 1. **Always use the specific scoring values above** when evaluating players or trades
@@ -181,6 +225,13 @@ ${ctx.newsContext ? `
 ## Real-Time Intelligence (RAG)
 ${ctx.newsContext}
 ` : ''}
+
+## Πληροφορίες League
+- **Ανάλυση Draft**: ${formatDraftIntelligence(ctx.draftDetail)}
+- **Πληροφορίες Αγοράς**: ${formatMarketIntelligence(ctx.pendingTransactions)}
+- **Δύναμη Θέσεων**:
+${formatPositionalRatings(ctx.positionalRatings)}
+- **Τάσεις Απόδοσης**: Εντόπισε παίκτες που αποδίδουν κάτω από τον μέσο όρο τους ή έχουν υψηλό φόρτο παιχνιδιών (GP).
 
 ## Οδηγίες
 1. **Πάντα χρησιμοποίησε τις συγκεκριμένες τιμές scoring** όταν αξιολογείς παίκτες ή trades

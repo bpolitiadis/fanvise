@@ -49,35 +49,49 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
         const data = await response.json();
         const transactions = data.transactions || [];
 
-        let newCount = 0;
+        // 2. Fetch league data for lookup (teams and rosters)
+        const { data: leagueData } = await supabase
+            .from('leagues')
+            .select('teams, roster_settings')
+            .eq('league_id', leagueId)
+            .single();
 
-        // Types of transactions to include
-        const includeTypes = ['FREEAGENT', 'WAIVER', 'TRADE', 'ROSTER'];
+        const teams = (leagueData?.teams as any[]) || [];
+        const teamMap = new Map(teams.map(t => [t.id, t]));
+
+        let newCount = 0;
 
         for (const tx of transactions) {
             // Filter: Ignore LINEUP and FUTURE_ROSTER completely
             if (tx.type === 'LINEUP' || tx.type === 'FUTURE_ROSTER') continue;
 
-            // If it's ROSTER, only count if it has an ADD or DROP item
-            if (tx.type === 'ROSTER') {
-                const hasRosterMove = tx.items?.some((item: any) => ['ADD', 'DROP', 'WAIVER'].includes(item.type));
-                if (!hasRosterMove) continue;
-            }
-
             // Robust date extraction with fallbacks
             const rawTimestamp = tx.processDate || tx.proposedDate || tx.bidDate || tx.date || Date.now();
             const txDate = new Date(rawTimestamp);
-
-            // Final safety check to prevent toISOString() from throwing
             const safePublishedAt = isNaN(txDate.getTime()) ? new Date().toISOString() : txDate.toISOString();
 
-            // Construct a better description if ESPN's is missing
+            // Enriched description logic
             let description = tx.description;
-            if (!description && tx.items) {
-                // Basic fallback description
-                const adds = tx.items.filter((i: any) => i.type === 'ADD').length;
-                const drops = tx.items.filter((i: any) => i.type === 'DROP').length;
-                description = `${tx.type}: ${adds} add, ${drops} drop`;
+
+            if (!description && tx.items && tx.items.length > 0) {
+                const details: string[] = [];
+
+                for (const item of tx.items) {
+                    const team = teamMap.get(item.toTeamId || item.fromTeamId);
+                    const teamName = team?.name || "Unknown Team";
+                    const playerName = item.playerPoolEntry?.player?.fullName || `Player ${item.playerId}`;
+
+                    if (item.type === 'ADD') {
+                        const from = item.fromTeamId === -1 ? "Free Agency" : (teamMap.get(item.fromTeamId)?.name || "Waivers");
+                        details.push(`${teamName} added ${playerName} from ${from}`);
+                    } else if (item.type === 'DROP') {
+                        const to = item.toTeamId === -1 ? "Waivers" : "Roster";
+                        details.push(`${teamName} dropped ${playerName} to ${to}`);
+                    } else if (item.type === 'WAIVER') {
+                        details.push(`${teamName} added ${playerName} via Waivers`);
+                    }
+                }
+                description = details.join(', ');
             }
 
             const { error } = await supabase

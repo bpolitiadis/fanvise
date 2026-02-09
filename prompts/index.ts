@@ -156,6 +156,9 @@ export function contextFromSnapshot(
             name: string;
             scoringSettings: ScoringSettings;
             rosterSlots: RosterSlots;
+            draftDetail?: any;
+            positionalRatings?: any;
+            liveScoring?: any;
         };
         myTeam: TeamContext;
         opponent?: TeamContext;
@@ -175,6 +178,9 @@ export function contextFromSnapshot(
         matchup: snapshot.matchup,
         schedule: snapshot.schedule,
         newsContext,
+        draftDetail: snapshot.league.draftDetail,
+        positionalRatings: snapshot.league.positionalRatings,
+        liveScoring: snapshot.league.liveScoring,
     };
 }
 

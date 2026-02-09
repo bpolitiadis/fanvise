@@ -34,7 +34,7 @@ export class EspnClient {
         // Add multiple views by appending manually since URLSearchParams encodes commas sometimes in a way ESPN doesn't like,
         // or just use the standard parameter repetition if supported.
         // ESPN V3 compliant way: ?view=mSettings&view=mTeam&view=mRoaster
-        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=mSettings&view=mTeam&view=mRoster&view=mBoxScore`;
+        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=mSettings&view=mTeam&view=mRoster&view=mBoxScore&view=mDraftDetail&view=mPositionalRatings&view=mPendingTransactions&view=mLiveScoring`;
 
         console.log(`Fetching League Settings: ${url}`);
 

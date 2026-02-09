@@ -37,6 +37,9 @@ export interface IntelligenceSnapshot {
         seasonId: string;
         scoringSettings: ScoringSettings;
         rosterSlots: RosterSlots;
+        draftDetail?: any;
+        positionalRatings?: any;
+        liveScoring?: any;
     };
     /** The team currently being viewed (perspective) */
     myTeam: TeamContext;
@@ -74,6 +77,9 @@ interface DbLeague {
     name: string;
     scoring_settings: ScoringSettings;
     roster_settings: RosterSlots;
+    draft_detail?: any;
+    positional_ratings?: any;
+    live_scoring?: any;
     teams?: DbTeam[];
 }
 
@@ -120,7 +126,10 @@ export async function upsertLeague(
     name: string,
     scoringSettings: ScoringSettings,
     rosterSettings: RosterSlots,
-    teams: DbTeam[]
+    teams: DbTeam[],
+    draftDetail?: any,
+    positionalRatings?: any,
+    liveScoring?: any
 ): Promise<void> {
     const supabase = await createClient();
 
@@ -133,6 +142,9 @@ export async function upsertLeague(
             scoring_settings: scoringSettings,
             roster_settings: rosterSettings,
             teams: teams,
+            draft_detail: draftDetail || {},
+            positional_ratings: positionalRatings || {},
+            live_scoring: liveScoring || {},
             last_updated_at: new Date().toISOString()
         });
 
@@ -141,7 +153,7 @@ export async function upsertLeague(
         throw error;
     }
 
-    console.log(`[League Service] Successfully upserted league ${leagueId} (${name})`);
+    console.log(`[League Service] Successfully upserted league ${leagueId} (${name}) with intelligence data`);
 }
 
 
@@ -249,6 +261,11 @@ async function fetchMatchupFromEspn(
                 injuryStatus: entry.playerPoolEntry?.player?.injuryStatus || 'ACTIVE',
                 isInjured: entry.playerPoolEntry?.player?.injured || false,
                 jersey: entry.playerPoolEntry?.player?.jersey,
+                // Performance Metrics
+                avgPoints: entry.playerPoolEntry?.player?.stats?.find((s: any) => s.statSourceId === 0 && s.statSplitTypeId === 0)?.appliedAverage,
+                totalPoints: entry.playerPoolEntry?.player?.stats?.find((s: any) => s.statSourceId === 0 && s.statSplitTypeId === 0)?.appliedTotal,
+                gamesPlayed: entry.playerPoolEntry?.player?.stats?.find((s: any) => s.statSourceId === 0 && s.statSplitTypeId === 0)?.stats?.['42'],
+                avgStats: entry.playerPoolEntry?.player?.stats?.find((s: any) => s.statSourceId === 0 && s.statSplitTypeId === 0)?.stats,
             }));
         };
 
@@ -403,6 +420,9 @@ export async function buildIntelligenceSnapshot(
             seasonId: league.season_id,
             scoringSettings: league.scoring_settings || {},
             rosterSlots: league.roster_settings || {},
+            draftDetail: league.draft_detail,
+            positionalRatings: league.positional_ratings,
+            liveScoring: league.live_scoring,
         },
         myTeam,
         opponent,

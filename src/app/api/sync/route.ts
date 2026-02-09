@@ -41,6 +41,10 @@ export async function POST(req: NextRequest) {
 
 
 
+        const draftDetail = data.draftDetail || {};
+        const positionalRatings = data.positionalRatings || {};
+        const liveScoring = data.liveScoring || {};
+
         // Extract teams
         // data.teams usually contains the team info
         // data.members usually contains the manager info
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
         });
 
         // 3. Upsert to DB
-        await upsertLeague(leagueId, year, name, scoringSettings, rosterSettings, teams);
+        await upsertLeague(leagueId, year, name, scoringSettings, rosterSettings, teams, draftDetail, positionalRatings, liveScoring);
 
         return NextResponse.json({
             success: true,

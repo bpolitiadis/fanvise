@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, MessageSquare, Users, User, Shield, ChevronDown, LayoutDashboard, TrendingUp, Settings, HelpCircle } from "lucide-react";
@@ -32,6 +33,24 @@ export function Sidebar() {
 
   return (
     <div className="flex h-full w-[280px] flex-col border-r bg-muted/20">
+      {/* Brand Header */}
+      <div className="p-6 pb-2">
+        <Link href="/" className="flex items-center gap-3 group">
+          <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-primary/20 bg-primary/5 flex items-center justify-center group-hover:border-primary/40 transition-colors">
+            <Image 
+              src="/fanvise_logo.png" 
+              alt="FanVise Logo" 
+              width={24} 
+              height={24}
+              className="object-contain"
+            />
+          </div>
+          <span className="font-black text-xl tracking-tighter uppercase italic">
+            Fan<span className="text-primary">Vise</span>
+          </span>
+        </Link>
+      </div>
+
       {/* Team Switcher Header */}
       <div className="p-3 border-b">
          <DropdownMenu>
@@ -140,7 +159,7 @@ export function Sidebar() {
               </Button>
           </div>
           <div className="flex items-center gap-3 px-2">
-             <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+             <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.6)]" />
              <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground/70">Perspective Active</span>
           </div>
       </div>

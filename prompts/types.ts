@@ -47,6 +47,10 @@ export interface PlayerContext {
     injuryStatus: 'ACTIVE' | 'OUT' | 'DAY_TO_DAY' | 'HEALTH_AND_SAFETY_PROTOCOLS' | 'INJURY_RESERVE' | 'SUSPENDED';
     isInjured: boolean;
     jersey?: string;
+    avgPoints?: number;
+    totalPoints?: number;
+    gamesPlayed?: number;
+    avgStats?: Record<string, number>;
 }
 
 /**
@@ -129,6 +133,11 @@ export interface PromptContext {
     schedule?: ScheduleContext;
     /** RAG-retrieved news context */
     newsContext?: string;
+    /** Advanced League Intelligence */
+    draftDetail?: any;
+    positionalRatings?: any;
+    liveScoring?: any;
+    pendingTransactions?: any;
 }
 
 // ============================================================================
@@ -148,6 +157,10 @@ export const PlayerContextSchema = z.object({
     injuryStatus: z.enum(['ACTIVE', 'OUT', 'DAY_TO_DAY', 'HEALTH_AND_SAFETY_PROTOCOLS', 'INJURY_RESERVE', 'SUSPENDED']),
     isInjured: z.boolean(),
     jersey: z.string().optional(),
+    avgPoints: z.number().optional(),
+    totalPoints: z.number().optional(),
+    gamesPlayed: z.number().optional(),
+    avgStats: z.record(z.string(), z.number()).optional(),
 });
 
 /**

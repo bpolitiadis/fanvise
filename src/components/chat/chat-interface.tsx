@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { MessageBubble } from "./message-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Loader2, Sparkles, BookOpen, BarChart3, Zap, BrainCircuit } from "lucide-react";
+import { Send, Loader2, Sparkles, BookOpen, BarChart3, Zap, BrainCircuit, TrendingUp, Search, Activity } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -144,7 +144,7 @@ export function ChatInterface() {
                     <Input 
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Analyze my roster, waivers, or trades..." 
+                        placeholder="Request strategic directive, waiver scan, or trade audit..." 
                         className="flex-1 border-0 focus-visible:ring-0 shadow-none h-14 rounded-none px-4 text-lg font-medium placeholder:text-muted-foreground/50"
                     />
                     <Button type="submit" size="icon" className="h-12 w-12 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95" disabled={!input.trim() || isPerspectiveLoading}>
@@ -157,12 +157,12 @@ export function ChatInterface() {
                 <Button 
                     variant="outline" 
                     className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group"
-                    onClick={() => handleQuickAction("Who should I drop for a streamer?")}
+                    onClick={() => handleQuickAction("Identify the top 3 streaming priorities for the next 48 hours. Focus on players who exploit my schedule density advantage and fill my weakest positions. Reference our scoring settings to justify the picks.")}
                 >
-                    <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary group-hover:bg-secondary/20">
+                    <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center text-yellow-500 group-hover:bg-yellow-500/20">
                         <Zap className="h-4 w-4" />
                     </div>
-                    <div className="flex flex-col items-start">
+                    <div className="flex flex-col items-start text-left">
                         <span className="text-sm font-bold">Waiver Advice</span>
                         <span className="text-[10px] text-muted-foreground">Find high-value streamers</span>
                     </div>
@@ -170,14 +170,53 @@ export function ChatInterface() {
                 <Button 
                     variant="outline" 
                     className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group"
-                    onClick={() => handleQuickAction("Analyze my matchup for this week")}
+                    onClick={() => handleQuickAction("Evaluate my current roster for potential trade candidates. Who is overperforming their draft value or season averages that I should sell high? Suggest 2-3 target players from other teams that would improve my positional depth.")}
+                >
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:bg-blue-500/20">
+                        <TrendingUp className="h-4 w-4" />
+                    </div>
+                    <div className="flex flex-col items-start text-left">
+                        <span className="text-sm font-bold">Trade Audit</span>
+                        <span className="text-[10px] text-muted-foreground">Identify sell-high candidates</span>
+                    </div>
+                </Button>
+                <Button 
+                    variant="outline" 
+                    className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group"
+                    onClick={() => handleQuickAction("Break down my current matchup. Given the game volume difference and current score, what is my win probability? Suggest one 'must-start' and one 'potential sit' based on recent performance trends and news.")}
                 >
                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20">
                         <BarChart3 className="h-4 w-4" />
                     </div>
-                    <div className="flex flex-col items-start">
-                        <span className="text-sm font-bold">Matchup Analysis</span>
+                    <div className="flex flex-col items-start text-left">
+                        <span className="text-sm font-bold">Matchup Prep</span>
                         <span className="text-[10px] text-muted-foreground">Win the 4th quarter</span>
+                    </div>
+                </Button>
+                <Button 
+                    variant="outline" 
+                    className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group"
+                    onClick={() => handleQuickAction("Conduct a full roster audit. Identify my 3 biggest vulnerabilities (injuries, inconsistent performers, or positional gaps). For each, suggest a specific action—whether a waiver move, trade, or rotation change—using real-time intelligence.")}
+                >
+                    <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500/20">
+                        <Activity className="h-4 w-4" />
+                    </div>
+                    <div className="flex flex-col items-start text-left">
+                        <span className="text-sm font-bold">Roster Audit</span>
+                        <span className="text-[10px] text-muted-foreground">Fix your vulnerabilities</span>
+                    </div>
+                </Button>
+                <Button 
+                    variant="outline" 
+                    className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group sm:col-span-2"
+                    onClick={() => handleQuickAction("Analyze the rosters of all other teams in the league. Which team has a surplus of players in a position where I am weak? Propose a fair trade involving players from my roster and theirs that addresses both teams' needs.")}
+                >
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 group-hover:bg-purple-500/20">
+                        <Search className="h-4 w-4" />
+                    </div>
+                    <div className="flex flex-col items-start text-left">
+                        <span className="text-sm font-bold">Trade Scouter</span>
+                        <span className="text-[10px] text-muted-foreground">Find the perfect trade partner</span>
                     </div>
                 </Button>
             </div>
@@ -201,7 +240,7 @@ export function ChatInterface() {
                className="flex items-center gap-3 text-primary/60 p-4 ml-12 bg-primary/5 rounded-2xl border border-primary/10 w-fit"
              >
                  <Loader2 className="h-4 w-4 animate-spin" />
-                 <span className="text-xs font-bold uppercase tracking-wider">Analyzing Game Tape...</span>
+                 <span className="text-xs font-black uppercase tracking-widest">Processing Intelligence...</span>
              </motion.div>
           )}
           <div ref={bottomRef} />
@@ -217,7 +256,7 @@ export function ChatInterface() {
                 <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask FanVise Coach..."
+                    placeholder="Submit inquiry to Savant..."
                     className="flex-1 border-0 focus-visible:ring-0 shadow-none h-12 rounded-none px-4 text-base font-medium"
                 />
                 <Button type="submit" size="icon" className="h-10 w-10 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 mr-1" disabled={isLoading || !input.trim()}>

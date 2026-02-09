@@ -15,6 +15,20 @@ describe('Prompt Engine', () => {
         abbrev: 'AW',
         manager: 'John Doe',
         isUserOwned: true,
+        roster: [
+            {
+                id: '101',
+                firstName: 'LeBron',
+                lastName: 'James',
+                fullName: 'LeBron James',
+                proTeam: 'LAL',
+                position: 'SF',
+                injuryStatus: 'ACTIVE',
+                isInjured: false,
+                avgPoints: 55.5,
+                gamesPlayed: 48
+            }
+        ]
     };
 
     const baseContext: PromptContext = {
@@ -112,6 +126,29 @@ describe('Prompt Engine', () => {
 
             expect(prompt).toContain('8 remaining');
             expect(prompt).toContain('Volume Advantage');
+        });
+
+        it('should include advanced intelligence blocks when provided', () => {
+            const contextWithIntel: PromptContext = {
+                ...baseContext,
+                draftDetail: { picks: [{ playerId: '1', roundId: 1 }] },
+                positionalRatings: { positionalRatings: { PG: { rating: 85 } } },
+                pendingTransactions: [{ id: '1', status: 'PENDING' }],
+            };
+
+            const prompt = getSystemPrompt('consigliere', contextWithIntel);
+
+            expect(prompt).toContain('League Intelligence');
+            expect(prompt).toContain('Draft context is available');
+            expect(prompt).toContain('PG: 85 rating');
+            expect(prompt).toContain('1 active transactions pending');
+            expect(prompt).toContain('Performance Trends');
+        });
+
+        it('should include player performance metrics in roster', () => {
+            const prompt = getSystemPrompt('consigliere', baseContext);
+            expect(prompt).toContain('AVG: 55.5');
+            expect(prompt).toContain('GP: 48');
         });
 
         it('should indicate user ownership status', () => {
