@@ -35,12 +35,24 @@ export default function Home() {
     setIsSyncing(true);
     try {
         const year = new Date().getFullYear().toString();
-        const sport = process.env.NEXT_PUBLIC_ESPN_SPORT || "ffl";
+        const sport = process.env.NEXT_PUBLIC_ESPN_SPORT || "fba";
+        
         await fetchAndSyncTransactions(activeLeagueId, year, sport);
         const latestTx = await getLatestTransactions(activeLeagueId, 10);
         setTransactions(latestTx as any);
+
+        // Run News Sync with Roster Intelligence
+        console.log("[Dashboard] Triggering News Sync...");
+        const newsSyncResponse = await fetch('/api/news/sync', {
+            method: 'POST',
+            body: JSON.stringify({ leagueId: activeLeagueId, teamId: activeTeamId }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const newsSyncResult = await newsSyncResponse.json();
+        console.log(`[Dashboard] News Sync complete: ${newsSyncResult.count} items imported`);
+
         // Refresh news as well if needed
-        const latestNews = await getLatestNews(10);
+        const latestNews = await getLatestNews(15); 
         setNews(latestNews as NewsItem[]);
         console.log("Sync successful");
     } catch (error) {

@@ -1,274 +1,501 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageBubble } from "./message-bubble";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Loader2, Sparkles, BookOpen, BarChart3, Zap, BrainCircuit, TrendingUp, Search, Activity } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import {
+  Send,
+  Loader2,
+  Sparkles,
+  BarChart3,
+  Zap,
+  BrainCircuit,
+  TrendingUp,
+  Search,
+  Activity,
+  ChevronDown,
+  CheckCircle2,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { usePerspective } from "@/lib/perspective-context";
+import {
+  useChatHistory,
+  type ChatLanguage,
+  type ChatMessage,
+} from "@/components/chat/chat-history-context";
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
+interface ToastState {
+  id: string;
+  title: string;
+  description?: string;
 }
 
 export function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [toasts, setToasts] = useState<ToastState[]>([]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { activeTeamId, activeLeagueId, activeTeam, isLoading: isPerspectiveLoading } = usePerspective();
+  const {
+    conversations,
+    activeConversation,
+    activeConversationId,
+    createConversation,
+    setActiveConversation,
+    upsertConversation,
+  } = useChatHistory();
 
-  // Auto-scroll to bottom
+  const messages = useMemo(() => activeConversation?.messages ?? [], [activeConversation?.messages]);
+  const responseLanguage: ChatLanguage = activeConversation?.language ?? "en";
+
+  const showToast = (title: string, description?: string) => {
+    const nextToast = { id: crypto.randomUUID(), title, description };
+    setToasts((prev) => [...prev, nextToast]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== nextToast.id));
+    }, 2200);
+  };
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+    if (!activeTeamId) return;
+    const teamConversations = conversations.filter(
+      (conversation) => conversation.activeTeamId === activeTeamId
+    );
+    if (teamConversations.length === 0) {
+      createConversation(activeTeamId, "en");
+      return;
+    }
+    if (!activeConversation || activeConversation.activeTeamId !== activeTeamId) {
+      setActiveConversation(teamConversations[0].id);
+    }
+  }, [
+    activeConversation,
+    activeTeamId,
+    conversations,
+    createConversation,
+    setActiveConversation,
+  ]);
 
-  const handleSubmit = async (e?: React.FormEvent, value?: string) => {
-    e?.preventDefault();
-    const messageContent = value || input;
-    if (!messageContent.trim() || isLoading) return;
+  useEffect(() => {
+    if (!isAtBottom) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, isLoading, isAtBottom]);
 
-    const userMessage: Message = { role: "user", content: messageContent };
-    setMessages((prev) => [...prev, userMessage]);
+  const handleScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const threshold = 80;
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    setIsAtBottom(isNearBottom);
+  };
+
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    setIsAtBottom(true);
+  };
+
+  const ensureConversationId = () => {
+    if (activeConversationId) return activeConversationId;
+    return createConversation(activeTeamId ?? null, "en");
+  };
+
+  const createMessage = (
+    role: "user" | "assistant",
+    content: string,
+    feedback?: "up" | "down" | null
+  ): ChatMessage => ({
+    id: crypto.randomUUID(),
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    feedback,
+  });
+
+  const persistMessages = (conversationId: string, nextMessages: ChatMessage[]) => {
+    upsertConversation(conversationId, (conversation) => ({
+      ...conversation,
+      activeTeamId: activeTeamId ?? conversation.activeTeamId,
+      messages: nextMessages,
+    }));
+  };
+
+  const streamAssistantReply = async (conversationId: string, requestMessages: ChatMessage[]) => {
+    const assistantDraft = createMessage("assistant", "");
+    persistMessages(conversationId, [...requestMessages, assistantDraft]);
+
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: requestMessages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+        activeTeamId,
+        activeLeagueId,
+        teamName: activeTeam?.manager || "Unknown Team",
+        language: responseLanguage,
+      }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const errMessage = errData.error || `Error: ${response.status}`;
+      const errorText =
+        response.status === 429
+          ? `⚠️ **Strategic Hold:** ${errMessage}`
+          : `❌ **Error:** ${errMessage}. Please check your connection or try again later.`;
+      persistMessages(conversationId, [...requestMessages, createMessage("assistant", errorText)]);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) return;
+
+    let assistantMessage = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = new TextDecoder().decode(value);
+      assistantMessage += text;
+      persistMessages(conversationId, [
+        ...requestMessages,
+        { ...assistantDraft, content: assistantMessage },
+      ]);
+    }
+  };
+
+  const handleSubmit = async (
+    event?: React.FormEvent,
+    value?: string,
+    editMessageId?: string
+  ) => {
+    event?.preventDefault();
+    const messageContent = (value ?? input).trim();
+    if (!messageContent || isLoading) return;
+
+    const conversationId = ensureConversationId();
     setInput("");
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-            messages: [...messages, userMessage],
-            activeTeamId,
-            activeLeagueId,
-            teamName: activeTeam?.manager || "Unknown Team"
-        }),
-      });
+      let nextMessages: ChatMessage[] = [];
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        const errMessage = errData.error || `Error: ${response.status}`;
-        
-        console.error("Chat API Error:", response.status, errData);
-        
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: response.status === 429 
-              ? `⚠️ **Strategic Hold:** ${errMessage}`
-              : `❌ **Error:** ${errMessage}. Please check your connection or try again later.`,
-          },
-        ]);
-        return;
+      if (editMessageId) {
+        const editedIndex = messages.findIndex((message) => message.id === editMessageId);
+        if (editedIndex === -1 || messages[editedIndex].role !== "user") return;
+        const editedMessage: ChatMessage = {
+          ...messages[editedIndex],
+          content: messageContent,
+          createdAt: new Date().toISOString(),
+        };
+        nextMessages = [...messages.slice(0, editedIndex), editedMessage];
+      } else {
+        nextMessages = [...messages, createMessage("user", messageContent)];
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) return;
-
-      let assistantMessage = "";
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = new TextDecoder().decode(value);
-        assistantMessage += text;
-
-        setMessages((prev) => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = {
-            role: "assistant",
-            content: assistantMessage,
-          };
-          return newMessages;
-        });
-      }
+      persistMessages(conversationId, nextMessages);
+      await streamAssistantReply(conversationId, nextMessages);
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Sorry, I encountered an error. Please try again.",
-        },
+      persistMessages(conversationId, [
+        ...messages,
+        createMessage("assistant", "Sorry, I encountered an error. Please try again."),
       ]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleQuickAction = (action: string) => {
-      handleSubmit(undefined, action);
+  const handleFeedback = (messageId: string, feedback: "up" | "down") => {
+    if (!activeConversationId) return;
+    upsertConversation(activeConversationId, (conversation) => ({
+      ...conversation,
+      messages: conversation.messages.map((message) =>
+        message.id === messageId ? { ...message, feedback } : message
+      ),
+    }));
   };
 
-  if (messages.length === 0) {
-      return (
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center justify-center min-h-[80vh] max-w-2xl mx-auto px-4 w-full"
-        >
-            <div className="flex flex-col items-center gap-6 mb-12 text-center">
-                <motion.div 
-                  initial={{ scale: 0.8, rotate: -10 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                  className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary shadow-inner border border-primary/20"
-                >
-                    <BrainCircuit className="w-10 h-10" />
-                </motion.div>
-                <div className="space-y-2">
-                    <h1 className="text-4xl font-black tracking-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
-                        Intelligence Hub
-                    </h1>
-                    <p className="text-muted-foreground text-lg font-medium max-w-md">
-                        Your strategic edge in the fantasy landscape. Data-driven insights for every move.
-                    </p>
-                </div>
-            </div>
-            
-            <div className="w-full max-w-xl relative mb-12">
-                 <form onSubmit={handleSubmit} className="relative flex items-center w-full border-2 border-primary/10 rounded-2xl shadow-xl bg-background focus-within:border-primary/30 focus-within:ring-4 focus-within:ring-primary/5 transition-all overflow-hidden p-1">
-                    <div className="hidden sm:flex items-center gap-2 px-4 py-2 border-r border-primary/10 mr-2">
-                        <Sparkles className="h-4 w-4 text-primary" />
-                        <span className="text-xs font-bold uppercase tracking-widest text-primary/70">Savant</span>
-                    </div>
-                    <Input 
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder="Request strategic directive, waiver scan, or trade audit..." 
-                        className="flex-1 border-0 focus-visible:ring-0 shadow-none h-14 rounded-none px-4 text-lg font-medium placeholder:text-muted-foreground/50"
-                    />
-                    <Button type="submit" size="icon" className="h-12 w-12 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95" disabled={!input.trim() || isPerspectiveLoading}>
-                        <Send className="h-5 w-5" />
-                    </Button>
-                </form>
-            </div>
+  const handleCopy = () => {
+    showToast("Copied", "Message copied to clipboard.");
+  };
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl">
-                <Button 
-                    variant="outline" 
-                    className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group"
-                    onClick={() => handleQuickAction("Identify the top 3 streaming priorities for the next 48 hours. Focus on players who exploit my schedule density advantage and fill my weakest positions. Reference our scoring settings to justify the picks.")}
-                >
-                    <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center text-yellow-500 group-hover:bg-yellow-500/20">
-                        <Zap className="h-4 w-4" />
-                    </div>
-                    <div className="flex flex-col items-start text-left">
-                        <span className="text-sm font-bold">Waiver Advice</span>
-                        <span className="text-[10px] text-muted-foreground">Find high-value streamers</span>
-                    </div>
-                </Button>
-                <Button 
-                    variant="outline" 
-                    className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group"
-                    onClick={() => handleQuickAction("Evaluate my current roster for potential trade candidates. Who is overperforming their draft value or season averages that I should sell high? Suggest 2-3 target players from other teams that would improve my positional depth.")}
-                >
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:bg-blue-500/20">
-                        <TrendingUp className="h-4 w-4" />
-                    </div>
-                    <div className="flex flex-col items-start text-left">
-                        <span className="text-sm font-bold">Trade Audit</span>
-                        <span className="text-[10px] text-muted-foreground">Identify sell-high candidates</span>
-                    </div>
-                </Button>
-                <Button 
-                    variant="outline" 
-                    className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group"
-                    onClick={() => handleQuickAction("Break down my current matchup. Given the game volume difference and current score, what is my win probability? Suggest one 'must-start' and one 'potential sit' based on recent performance trends and news.")}
-                >
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20">
-                        <BarChart3 className="h-4 w-4" />
-                    </div>
-                    <div className="flex flex-col items-start text-left">
-                        <span className="text-sm font-bold">Matchup Prep</span>
-                        <span className="text-[10px] text-muted-foreground">Win the 4th quarter</span>
-                    </div>
-                </Button>
-                <Button 
-                    variant="outline" 
-                    className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group"
-                    onClick={() => handleQuickAction("Conduct a full roster audit. Identify my 3 biggest vulnerabilities (injuries, inconsistent performers, or positional gaps). For each, suggest a specific action—whether a waiver move, trade, or rotation change—using real-time intelligence.")}
-                >
-                    <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500/20">
-                        <Activity className="h-4 w-4" />
-                    </div>
-                    <div className="flex flex-col items-start text-left">
-                        <span className="text-sm font-bold">Roster Audit</span>
-                        <span className="text-[10px] text-muted-foreground">Fix your vulnerabilities</span>
-                    </div>
-                </Button>
-                <Button 
-                    variant="outline" 
-                    className="rounded-2xl gap-3 h-14 justify-start px-6 border-primary/10 hover:border-primary/30 hover:bg-primary/5 transition-all group sm:col-span-2"
-                    onClick={() => handleQuickAction("Analyze the rosters of all other teams in the league. Which team has a surplus of players in a position where I am weak? Propose a fair trade involving players from my roster and theirs that addresses both teams' needs.")}
-                >
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 group-hover:bg-purple-500/20">
-                        <Search className="h-4 w-4" />
-                    </div>
-                    <div className="flex flex-col items-start text-left">
-                        <span className="text-sm font-bold">Trade Scouter</span>
-                        <span className="text-[10px] text-muted-foreground">Find the perfect trade partner</span>
-                    </div>
-                </Button>
+  const handleQuickAction = (action: string) => {
+    void handleSubmit(undefined, action);
+  };
+
+  const thinkingIndicator = (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="ml-12 w-fit rounded-2xl border border-primary/20 bg-card/90 px-4 py-3"
+    >
+      <div className="flex items-center gap-3">
+        <div className="relative h-3.5 w-3.5">
+          <span className="absolute inset-0 rounded-full bg-primary/50 animate-ping" />
+          <span className="absolute inset-[2px] rounded-full bg-primary" />
+        </div>
+        <div className="flex items-end gap-1">
+          <span className="h-1.5 w-6 rounded-full bg-primary/60 animate-pulse" />
+          <span className="h-2 w-10 rounded-full bg-primary/40 animate-pulse [animation-delay:200ms]" />
+          <span className="h-1.5 w-8 rounded-full bg-primary/50 animate-pulse [animation-delay:400ms]" />
+        </div>
+        <span className="text-[11px] font-bold uppercase tracking-widest text-primary/90">
+          Thinking...
+        </span>
+      </div>
+    </motion.div>
+  );
+
+  if (messages.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mx-auto flex min-h-[80vh] w-full max-w-2xl flex-col items-center justify-center px-4"
+      >
+        <div className="mb-10 flex flex-col items-center gap-6 text-center">
+          <motion.div
+            initial={{ scale: 0.8, rotate: -10 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+            className="flex h-20 w-20 items-center justify-center rounded-3xl border border-primary/20 bg-primary/10 text-primary shadow-inner"
+          >
+            <BrainCircuit className="h-10 w-10" />
+          </motion.div>
+          <div className="space-y-2">
+            <h1 className="bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-4xl font-black tracking-tight text-transparent">
+              Intelligence Hub
+            </h1>
+            <p className="max-w-md text-lg font-medium text-muted-foreground">
+              Strategic Consigliere online for{" "}
+              <span className="text-primary">{activeTeam?.manager ?? "your perspective"}</span>.
+            </p>
+          </div>
+        </div>
+
+        <div className="relative mb-10 w-full max-w-xl">
+          <form
+            onSubmit={handleSubmit}
+            className="relative flex w-full items-center overflow-hidden rounded-2xl border-2 border-primary/10 bg-background p-1 shadow-xl transition-all focus-within:border-primary/30 focus-within:ring-4 focus-within:ring-primary/5"
+          >
+            <div className="mr-2 hidden items-center gap-2 border-r border-primary/10 px-4 py-2 sm:flex">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-xs font-bold uppercase tracking-widest text-primary/70">
+                Savant
+              </span>
             </div>
-        </motion.div>
-      );
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Request strategic directive, waiver scan, or trade audit..."
+              className="h-14 flex-1 rounded-none border-0 px-4 text-lg font-medium shadow-none placeholder:text-muted-foreground/50 focus-visible:ring-0"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              className="h-12 w-12 rounded-xl bg-primary shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-95"
+              disabled={!input.trim() || isPerspectiveLoading}
+            >
+              <Send className="h-5 w-5" />
+            </Button>
+          </form>
+        </div>
+
+        <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
+          <Button
+            variant="outline"
+            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
+            onClick={() =>
+              handleQuickAction(
+                "Identify the top 3 streaming priorities for the next 48 hours. Focus on players who exploit my schedule density advantage and fill my weakest positions. Reference our scoring settings to justify the picks."
+              )
+            }
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/10 text-yellow-500 group-hover:bg-yellow-500/20">
+              <Zap className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-sm font-bold">Waiver Advice</span>
+              <span className="text-[11px] text-muted-foreground">Find high-value streamers</span>
+            </div>
+          </Button>
+          <Button
+            variant="outline"
+            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
+            onClick={() =>
+              handleQuickAction(
+                "Evaluate my current roster for potential trade candidates. Who is overperforming their draft value or season averages that I should sell high? Suggest 2-3 target players from other teams that would improve my positional depth."
+              )
+            }
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-hover:bg-blue-500/20">
+              <TrendingUp className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-sm font-bold">Trade Audit</span>
+              <span className="text-[11px] text-muted-foreground">Identify sell-high candidates</span>
+            </div>
+          </Button>
+          <Button
+            variant="outline"
+            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
+            onClick={() =>
+              handleQuickAction(
+                "Break down my current matchup. Given the game volume difference and current score, what is my win probability? Suggest one 'must-start' and one 'potential sit' based on recent performance trends and news."
+              )
+            }
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20">
+              <BarChart3 className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-sm font-bold">Matchup Prep</span>
+              <span className="text-[11px] text-muted-foreground">Win the 4th quarter</span>
+            </div>
+          </Button>
+          <Button
+            variant="outline"
+            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
+            onClick={() =>
+              handleQuickAction(
+                "Conduct a full roster audit. Identify my 3 biggest vulnerabilities (injuries, inconsistent performers, or positional gaps). For each, suggest a specific action—whether a waiver move, trade, or rotation change—using real-time intelligence."
+              )
+            }
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 text-red-500 group-hover:bg-red-500/20">
+              <Activity className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-sm font-bold">Roster Audit</span>
+              <span className="text-[11px] text-muted-foreground">Fix your vulnerabilities</span>
+            </div>
+          </Button>
+          <Button
+            variant="outline"
+            className="group col-span-1 h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5 sm:col-span-2"
+            onClick={() =>
+              handleQuickAction(
+                "Analyze the rosters of all other teams in the league. Which team has a surplus of players in a position where I am weak? Propose a fair trade involving players from my roster and theirs that addresses both teams' needs."
+              )
+            }
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500 group-hover:bg-purple-500/20">
+              <Search className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-sm font-bold">Trade Scouter</span>
+              <span className="text-[11px] text-muted-foreground">Find the perfect trade partner</span>
+            </div>
+          </Button>
+        </div>
+      </motion.div>
+    );
   }
 
   return (
-    <div className="flex flex-col h-full w-full max-w-3xl mx-auto relative overflow-hidden">
-      <ScrollArea className="flex-1 px-4 pt-4" ref={scrollRef}>
-        <div className="flex flex-col gap-6 pb-32 max-w-3xl mx-auto">
+    <div className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 pt-4"
+      >
+        <div className="mx-auto flex max-w-3xl flex-col gap-6 pb-8">
           <AnimatePresence mode="popLayout">
-            {messages.map((m, i) => (
-              <MessageBubble key={i} message={m} />
+            {messages.map((message) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                onFeedback={handleFeedback}
+                onCopy={handleCopy}
+                onToast={showToast}
+                onEditSubmit={(messageId, nextValue) => {
+                  void handleSubmit(undefined, nextValue, messageId);
+                }}
+              />
             ))}
           </AnimatePresence>
-          {isLoading && (
-             <motion.div 
-               initial={{ opacity: 0 }}
-               animate={{ opacity: 1 }}
-               className="flex items-center gap-3 text-primary/60 p-4 ml-12 bg-primary/5 rounded-2xl border border-primary/10 w-fit"
-             >
-                 <Loader2 className="h-4 w-4 animate-spin" />
-                 <span className="text-xs font-black uppercase tracking-widest">Processing Intelligence...</span>
-             </motion.div>
-          )}
+          {isLoading && thinkingIndicator}
           <div ref={bottomRef} />
         </div>
-      </ScrollArea>
+      </div>
 
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-20 pb-8 px-4">
-        <div className="max-w-3xl mx-auto">
-            <form onSubmit={handleSubmit} className="relative flex items-center w-full border-2 border-primary/10 rounded-2xl shadow-2xl bg-background focus-within:border-primary/30 focus-within:ring-4 focus-within:ring-primary/5 transition-all overflow-hidden p-1">
-                <div className="hidden sm:flex items-center gap-2 px-3 py-2 border-r border-primary/10 mr-2">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                </div>
-                <Input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Submit inquiry to Savant..."
-                    className="flex-1 border-0 focus-visible:ring-0 shadow-none h-12 rounded-none px-4 text-base font-medium"
-                />
-                <Button type="submit" size="icon" className="h-10 w-10 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95 mr-1" disabled={isLoading || !input.trim()}>
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
-            </form>
-            <div className="text-center mt-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/40">
-                    AI-Powered Insights • FanVise Intelligence v1.0
-                </p>
-            </div>
+      {!isAtBottom && (
+        <div className="pointer-events-none absolute bottom-20 right-6 z-20">
+          <Button
+            type="button"
+            size="icon"
+            onClick={scrollToBottom}
+            className="pointer-events-auto h-10 w-10 rounded-full border border-border bg-card/90 text-primary shadow-xl hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </Button>
         </div>
+      )}
+
+      <div className="border-t border-border bg-background px-4 py-4">
+        <div className="mx-auto max-w-3xl">
+          <form
+            onSubmit={handleSubmit}
+            className="relative flex w-full items-center overflow-hidden rounded-2xl border-2 border-primary/10 bg-background p-1 shadow-xl transition-all focus-within:border-primary/30 focus-within:ring-4 focus-within:ring-primary/5"
+          >
+            <div className="mr-2 hidden items-center gap-2 border-r border-primary/10 px-3 py-2 sm:flex">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                responseLanguage === "el"
+                  ? "Υποβολή ερωτήματος στο Savant..."
+                  : "Submit inquiry to Savant..."
+              }
+              className="h-12 flex-1 rounded-none border-0 px-4 text-base font-medium shadow-none focus-visible:ring-0"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              className="mr-1 h-10 w-10 rounded-xl bg-primary shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-95"
+              disabled={isLoading || !input.trim()}
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </form>
+          <div className="mt-2 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/80">
+              Perspective: {activeTeam?.manager ?? "No Team"} • Language:{" "}
+              {responseLanguage === "el" ? "Greek" : "English"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute right-4 top-4 z-50 space-y-2">
+        <AnimatePresence>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: -8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="pointer-events-auto flex min-w-[220px] items-start gap-2 rounded-xl border border-success/20 bg-card px-3 py-2 shadow-2xl"
+            >
+              <CheckCircle2 className="mt-0.5 h-4 w-4 text-success" />
+              <div>
+                <p className="text-xs font-semibold text-foreground">{toast.title}</p>
+                {toast.description && <p className="text-[11px] text-muted-foreground">{toast.description}</p>}
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -29,7 +29,8 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
     const client = new EspnClient(leagueId, year, sport, swid, s2);
 
     // 1. Fetch from ESPN using the client which handles CORS (since it's on server) and cookies
-    const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${sport}/seasons/${year}/segments/0/leagues/${leagueId}?view=mTransactions2`;
+    // Add mRoster view to get a complete player lookup table for name resolution
+    const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${sport}/seasons/${year}/segments/0/leagues/${leagueId}?view=mTransactions2&view=mRoster`;
     console.log(`Fetching transactions from: ${url}`);
 
     try {
@@ -49,6 +50,21 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
         const data = await response.json();
         const transactions = data.transactions || [];
 
+        // Build a global player map from all team rosters for robust name resolution
+        const playerMap = new Map<number, string>();
+        if (data.teams && Array.isArray(data.teams)) {
+            for (const team of data.teams) {
+                if (team.roster && team.roster.entries) {
+                    for (const entry of team.roster.entries) {
+                        const p = entry.playerPoolEntry?.player || entry.player;
+                        if (p && p.id && p.fullName) {
+                            playerMap.set(p.id, p.fullName);
+                        }
+                    }
+                }
+            }
+        }
+
         // 2. Fetch league data for lookup (teams and rosters)
         const { data: leagueData } = await supabase
             .from('leagues')
@@ -57,13 +73,19 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
             .single();
 
         const teams = (leagueData?.teams as any[]) || [];
-        const teamMap = new Map(teams.map(t => [t.id, t]));
+        const teamMap = new Map(teams.map(t => [String(t.id), t]));
 
         let newCount = 0;
 
         for (const tx of transactions) {
             // Filter: Ignore LINEUP and FUTURE_ROSTER completely
+            // Also ignore generic ROSTER transactions that don't have enough detail to be useful
             if (tx.type === 'LINEUP' || tx.type === 'FUTURE_ROSTER') continue;
+
+            // If it's a "ROSTER" transaction and description is generic, check if it's worth keeping
+            if (tx.type === 'ROSTER' && (!tx.description || tx.description === 'ROSTER transaction') && (!tx.items || tx.items.length === 0)) {
+                continue;
+            }
 
             // Robust date extraction with fallbacks
             const rawTimestamp = tx.processDate || tx.proposedDate || tx.bidDate || tx.date || Date.now();
@@ -73,26 +95,56 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
             // Enriched description logic
             let description = tx.description;
 
+            // Clean up generic "ROSTER transaction" if it has items
+            if (description === 'ROSTER transaction' && tx.items && tx.items.length > 0) {
+                description = "";
+            }
+
             if (!description && tx.items && tx.items.length > 0) {
-                const details: string[] = [];
+                const teamMoves = new Map<string, string[]>();
 
                 for (const item of tx.items) {
-                    const team = teamMap.get(item.toTeamId || item.fromTeamId);
+                    const mappedTeamId = item.toTeamId !== -1 ? item.toTeamId : item.fromTeamId;
+                    const team = teamMap.get(String(mappedTeamId));
                     const teamName = team?.name || "Unknown Team";
-                    const playerName = item.playerPoolEntry?.player?.fullName || `Player ${item.playerId}`;
 
+                    // Try to resolve player name using various sources
+                    let playerName = item.playerPoolEntry?.player?.fullName ||
+                        playerMap.get(item.playerId) ||
+                        `Player ${item.playerId}`;
+
+                    let moveDetail = "";
                     if (item.type === 'ADD') {
-                        const from = item.fromTeamId === -1 ? "Free Agency" : (teamMap.get(item.fromTeamId)?.name || "Waivers");
-                        details.push(`${teamName} added ${playerName} from ${from}`);
+                        const from = item.fromTeamId === -1 ? "Free Agency" : (teamMap.get(String(item.fromTeamId))?.name || "Waivers");
+                        moveDetail = `added ${playerName} from ${from}`;
                     } else if (item.type === 'DROP') {
                         const to = item.toTeamId === -1 ? "Waivers" : "Roster";
-                        details.push(`${teamName} dropped ${playerName} to ${to}`);
+                        moveDetail = `dropped ${playerName} to ${to}`;
                     } else if (item.type === 'WAIVER') {
-                        details.push(`${teamName} added ${playerName} via Waivers`);
+                        moveDetail = `added ${playerName} via Waivers`;
+                    } else if (tx.type === 'ROSTER') {
+                        moveDetail = `moved ${playerName}`;
+                    }
+
+                    if (moveDetail) {
+                        if (!teamMoves.has(teamName)) teamMoves.set(teamName, []);
+                        teamMoves.get(teamName)!.push(moveDetail);
                     }
                 }
-                description = details.join(', ');
+
+                const finalDetails: string[] = [];
+                for (const [teamName, moves] of teamMoves.entries()) {
+                    if (moves.length > 3) {
+                        finalDetails.push(`${teamName}: shifted ${moves.length} players`);
+                    } else {
+                        finalDetails.push(`${teamName}: ${moves.join(', ')}`);
+                    }
+                }
+                description = finalDetails.join(' | ');
             }
+
+            // Skip if we still don't have a description or if it's still generic
+            if (!description || description === 'ROSTER transaction') continue;
 
             const { error } = await supabase
                 .from('league_transactions')

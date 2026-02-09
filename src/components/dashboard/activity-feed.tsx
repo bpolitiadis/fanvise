@@ -65,15 +65,31 @@ export function ActivityFeed({ transactions, className }: ActivityFeedProps) {
                           typeColor = "text-destructive";
                           typeBg = "bg-destructive/10";
                           label = "DROP";
+                      } else if (tx.type === 'ROSTER') {
+                          typeColor = "text-muted-foreground/50";
+                          typeBg = "bg-muted/5";
+                          label = "ROSTER";
+                          // If description already explains the move, we could hide this or keep it subtle
                       }
 
                       const txDate = new Date(tx.published_at);
                       const dateStr = txDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                       const timeStr = txDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
 
-                      // Extract team context from description if possible
-                      const teamNameMatch = tx.description.match(/^([^ ]+( [^ ]+)?)/);
-                      const teamInitial = teamNameMatch ? teamNameMatch[1].substring(0, 1) : "T";
+                       // Extract team context from description if possible
+                      // Handle formats like "Team Name: action" or "Team Name added Player Name"
+                      const teamNameMatch = tx.description.match(/^([^:|]+)/);
+                      let teamInitial = "T";
+                      if (teamNameMatch) {
+                          const name = teamNameMatch[1].trim();
+                          // Skip "Unknown Team" for initials if possible
+                          if (name === "Unknown Team") {
+                              teamInitial = "?";
+                          } else {
+                              // Get first letter of each word up to 2 words
+                              teamInitial = name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+                          }
+                      }
 
                       return (
                           <TableRow key={tx.id} className="group border-white/5 hover:bg-muted/20 transition-colors">
