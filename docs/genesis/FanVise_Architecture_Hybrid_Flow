@@ -34,7 +34,7 @@ To maintain high reliability and "Clean Code" standards, logic is strictly parti
 | --- | --- | --- |
 | **Frontend/UX** | **Node.js (Next.js)** | State management, React Server Components (RSC), Supabase Auth sessions, and League Heatmap visualization. |
 | **Identity** | **Supabase** | JWT handling, Row Level Security (RLS) enforcement, and User Profile storage. |
-| **Intelligence** | **Python (GCF)** | LLM orchestration (Gemini 1.5 Flash), Vector Embeddings (Text-Embedding-004), and BeautifulSoup/Request scraping logic. |
+| **Intelligence** | **Python (GCF)** | LLM orchestration (Gemini 2.0 Flash), Vector Embeddings (Text-Embedding-004), and BeautifulSoup/Request scraping logic. |
 | **Persistence** | **PostgreSQL** | Relational league data and high-dimensional vector storage for player news. |
 
 ## 3. CI/CD Pipeline Design

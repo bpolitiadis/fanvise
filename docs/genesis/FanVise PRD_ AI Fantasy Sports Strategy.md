@@ -44,7 +44,7 @@ By leveraging a **RAG (Retrieval-Augmented Generation)** architecture, FanVise m
   * **Private:** ESPN API Scraper (Authenticated via stored Cookies).  
   * **Public:** RSS/Twitter Scrapers (Rotoworld, Basketball Monster).  
 * **Cognitive Layer (The Brain):**  
-  * **LLM:** Gemini 1.5 Flash (Low latency, high context).  
+  * **LLM:** Gemini 2.0 Flash (Low latency, high context).  
   * **Vector DB:** Pinecone or Firestore Vector Search (Storing news embeddings).  
 * **Infrastructure:** Vercel (Frontend) \+ Google Cloud Platform (Backend/Cron Jobs).
 

@@ -17,7 +17,7 @@ graph TD
     end
     
     subgraph "Intelligence Layer"
-        Orchestrator --> Gemini[Google Vertex AI / Gemini 1.5]
+        Orchestrator --> Gemini[Google Vertex AI / Gemini 2.0]
         RAG --> SupabaseVector[Supabase pgvector]
     end
     
@@ -42,5 +42,5 @@ graph TD
 
 - **Frontend/Backend**: Next.js (Deployed on Vercel)
 - **Database/Auth**: Supabase (PostgreSQL + pgvector)
-- **AI Models**: Google Gemini 1.5 Flash (via Google Generative AI SDK)
+- **AI Models**: Google Gemini 2.0 Flash (via Google Generative AI SDK)
 - **Data Ingestion**: Custom TypeScript clients for ESPN and RSS scraping.
