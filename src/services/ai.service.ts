@@ -62,7 +62,7 @@ export interface GenerateOptions {
 /**
  * Result of a streaming response generation.
  */
-export type StreamResult = AsyncIterable<string> | ReadableStream<Uint8Array>;
+export type StreamResult = AsyncIterable<string>;
 
 // ============================================================================
 // Utility Functions
@@ -116,10 +116,6 @@ async function withRetry<T>(
 
     throw lastError;
 }
-
-// ============================================================================
-// Gemini Implementation
-// ============================================================================
 
 /**
  * Gets a configured Gemini model instance.
@@ -197,13 +193,13 @@ async function generateGeminiStream(
  * @param history - Previous conversation messages
  * @param message - The new user message
  * @param options - Generation options
- * @returns ReadableStream of response chunks
+ * @returns Async iterable of response chunks
  */
 async function generateOllamaStream(
     history: ChatMessage[],
     message: string,
     options: GenerateOptions = {}
-): Promise<ReadableStream<Uint8Array>> {
+): Promise<AsyncIterable<string>> {
     // Convert to Ollama message format
     const messages = history.map(msg => ({
         role: msg.role === 'model' ? 'assistant' : msg.role,
@@ -236,7 +232,36 @@ async function generateOllamaStream(
         throw new Error('Ollama response has no body');
     }
 
-    return response.body;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    return {
+        async *[Symbol.asyncIterator]() {
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const json = JSON.parse(line);
+                            if (json.message?.content) {
+                                yield json.message.content;
+                            }
+                        } catch {
+                            // Fragmented JSON, skip
+                        }
+                    }
+                }
+            } finally {
+                reader.releaseLock();
+            }
+        }
+    };
 }
 
 // ============================================================================
@@ -253,24 +278,6 @@ async function generateOllamaStream(
  * @param message - The new user message
  * @param options - Generation options including system instruction
  * @returns StreamResult that can be iterated for response chunks
- * 
- * @example
- * ```typescript
- * import { generateStreamingResponse } from '@/services/ai.service';
- * import { getSystemPrompt } from '@/prompts';
- * 
- * const systemPrompt = getSystemPrompt('consigliere', context);
- * 
- * const stream = await generateStreamingResponse(
- *   chatHistory,
- *   userMessage,
- *   { systemInstruction: systemPrompt }
- * );
- * 
- * for await (const chunk of stream) {
- *   console.log(chunk);
- * }
- * ```
  */
 export async function generateStreamingResponse(
     history: ChatMessage[],
@@ -302,28 +309,10 @@ export async function generateResponse(
     if (USE_LOCAL_AI) {
         // For Ollama, collect the stream
         const stream = await generateOllamaStream([], message, options);
-        const reader = stream.getReader();
-        const decoder = new TextDecoder();
         let result = '';
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                    const json = JSON.parse(line);
-                    if (json.message?.content) {
-                        result += json.message.content;
-                    }
-                } catch {
-                    // Skip malformed JSON
-                }
-            }
+        for await (const chunk of stream) {
+            result += chunk;
         }
 
         return result;

@@ -3,7 +3,7 @@ import { getSystemPrompt, contextFromSnapshot } from "@/prompts";
 import type { SupportedLanguage, MatchupContext, ScheduleContext } from "@/prompts/types";
 import { generateStreamingResponse, type ChatMessage } from "@/services/ai.service";
 import { buildIntelligenceSnapshot } from "@/services/league.service";
-import { searchNews } from "@/lib/services/news-service";
+import { searchNews } from "@/services/news.service";
 
 /**
  * Chat API Route
@@ -85,37 +85,9 @@ export async function POST(req: NextRequest) {
         const stream = new ReadableStream({
             async start(controller) {
                 try {
-                    // Check if it's an async iterable (Gemini) or ReadableStream (Ollama)
-                    if (Symbol.asyncIterator in streamResult) {
-                        // Gemini async iterable
-                        for await (const chunk of streamResult as AsyncIterable<string>) {
-                            if (chunk) {
-                                controller.enqueue(encoder.encode(chunk));
-                            }
-                        }
-                    } else {
-                        // Ollama ReadableStream
-                        const reader = (streamResult as ReadableStream<Uint8Array>).getReader();
-                        const decoder = new TextDecoder();
-
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-
-                            const chunk = decoder.decode(value);
-                            const lines = chunk.split('\n');
-
-                            for (const line of lines) {
-                                if (!line.trim()) continue;
-                                try {
-                                    const json = JSON.parse(line);
-                                    if (json.message?.content) {
-                                        controller.enqueue(encoder.encode(json.message.content));
-                                    }
-                                } catch {
-                                    // Fragmented JSON, skip
-                                }
-                            }
+                    for await (const chunk of streamResult) {
+                        if (chunk) {
+                            controller.enqueue(encoder.encode(chunk));
                         }
                     }
                 } catch (err) {

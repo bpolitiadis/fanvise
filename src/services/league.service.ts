@@ -12,11 +12,13 @@ import { createClient } from '@/utils/supabase/server';
 import { EspnClient } from '@/lib/espn/client';
 import type {
     TeamContext,
+    PlayerContext,
     MatchupContext,
     ScheduleContext,
     ScoringSettings,
     RosterSlots,
 } from '@/prompts/types';
+import { getPositionName } from '@/lib/espn/constants';
 
 // ============================================================================
 // Types
@@ -164,7 +166,7 @@ function findTeamInLeague(league: DbLeague, teamId: string): DbTeam | null {
  * @param dbTeam - The raw database team
  * @returns Formatted TeamContext
  */
-function toTeamContext(dbTeam: DbTeam): TeamContext {
+function toTeamContext(dbTeam: DbTeam, roster?: PlayerContext[]): TeamContext {
     return {
         id: String(dbTeam.id),
         name: dbTeam.name,
@@ -178,6 +180,7 @@ function toTeamContext(dbTeam: DbTeam): TeamContext {
                 ties: dbTeam.ties || 0,
             }
             : undefined,
+        roster,
     };
 }
 
@@ -195,13 +198,21 @@ function toTeamContext(dbTeam: DbTeam): TeamContext {
 async function fetchMatchupFromEspn(
     leagueId: string,
     teamId: string
-): Promise<{ matchup: MatchupContext; opponentId: string } | null> {
+): Promise<{
+    matchup: MatchupContext;
+    opponentId: string;
+    myRoster?: PlayerContext[];
+    opponentRoster?: PlayerContext[];
+} | null> {
     try {
         const year = new Date().getFullYear().toString();
         const sport = process.env.NEXT_PUBLIC_ESPN_SPORT || 'fba';
 
-        const espnClient = new EspnClient(leagueId, year, sport);
-        const matchupData = await espnClient.getMatchups();
+        const swid = process.env.ESPN_SWID;
+        const s2 = process.env.ESPN_S2;
+        const espnClient = new EspnClient(leagueId, year, sport, swid, s2);
+        // Request roster views specifically to get player data
+        const matchupData = await espnClient.getMatchups(undefined, ['mMatchupScore', 'mScoreboard', 'mRoster', 'rosterForCurrentScoringPeriod']);
 
         if (!matchupData?.schedule) {
             console.warn('[League Service] No schedule found in ESPN matchup data');
@@ -225,6 +236,45 @@ async function fetchMatchupFromEspn(
         const myScore = myTeamData?.totalPoints || 0;
         const opponentScore = opponentData?.totalPoints || 0;
 
+        // Map roster data
+        const mapRoster = (rosterData: any): PlayerContext[] => {
+            if (!rosterData?.entries || !Array.isArray(rosterData.entries)) return [];
+            return rosterData.entries.map((entry: any) => ({
+                id: String(entry.playerId),
+                firstName: entry.playerPoolEntry?.player?.firstName || '',
+                lastName: entry.playerPoolEntry?.player?.lastName || '',
+                fullName: entry.playerPoolEntry?.player?.fullName || 'Unknown Player',
+                proTeam: String(entry.playerPoolEntry?.player?.proTeamId || ''),
+                position: getPositionName(entry.playerPoolEntry?.player?.defaultPositionId || ''),
+                injuryStatus: entry.playerPoolEntry?.player?.injuryStatus || 'ACTIVE',
+                isInjured: entry.playerPoolEntry?.player?.injured || false,
+                jersey: entry.playerPoolEntry?.player?.jersey,
+            }));
+        };
+
+        const opponentId = String(opponentData?.teamId);
+
+        console.log(`[League Service] Found matchup for team ${teamIdNum}. My Score: ${myScore}, Opponent: ${opponentId}, Opponent Score: ${opponentScore}`);
+        console.log(`[League Service] Total teams in response: ${matchupData.teams?.length || 0}`);
+
+        // Find roster entries in the top-level teams array (more reliable)
+        const findRoster = (tid: number) => {
+            const team = matchupData.teams?.find((t: any) => t.id === tid);
+            if (!team) {
+                console.warn(`[League Service] Team ${tid} not found in teams array!`);
+                return null;
+            }
+            // Exhaustive check of roster fields
+            const roster = team.roster || team.rosterForCurrentScoringPeriod || team.rosterForCurrentScoringPeriodString;
+            console.log(`[League Service] Team ${tid} roster found: ${!!roster}, entries: ${roster?.entries?.length || 0}`);
+            return roster;
+        };
+
+        const myRoster = mapRoster(findRoster(teamIdNum));
+        const opponentRoster = mapRoster(findRoster(parseInt(opponentId)));
+
+        console.log(`[League Service] Mapped rosters - My: ${myRoster.length}, Opponent: ${opponentRoster.length}`);
+
         return {
             matchup: {
                 myScore,
@@ -233,7 +283,9 @@ async function fetchMatchupFromEspn(
                 status: currentMatchup.winner === 'UNDECIDED' ? 'in_progress' : 'completed',
                 scoringPeriod: matchupData.scoringPeriodId,
             },
-            opponentId: String(opponentData?.teamId),
+            opponentId,
+            myRoster,
+            opponentRoster,
         };
     } catch (error) {
         console.error('[League Service] Failed to fetch matchup from ESPN:', error);
@@ -318,11 +370,12 @@ export async function buildIntelligenceSnapshot(
         throw new Error(`Team ${teamId} not found in league ${leagueId}`);
     }
 
-    const myTeam = toTeamContext(myTeamDb);
-
     // 3. Fetch matchup from ESPN (includes opponent ID)
     const matchupResult = await fetchMatchupFromEspn(leagueId, teamId);
 
+    const myTeam = toTeamContext(myTeamDb, matchupResult?.myRoster);
+
+    // 4. Extract matchup and opponent from ESPN result
     let opponent: TeamContext | undefined;
     let matchup: MatchupContext | undefined;
 
@@ -331,7 +384,7 @@ export async function buildIntelligenceSnapshot(
 
         const opponentDb = findTeamInLeague(league, matchupResult.opponentId);
         if (opponentDb) {
-            opponent = toTeamContext(opponentDb);
+            opponent = toTeamContext(opponentDb, matchupResult.opponentRoster);
         }
     }
 

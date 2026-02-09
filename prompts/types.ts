@@ -35,6 +35,21 @@ export type ScoringSettings = Record<string, unknown>;
 export type RosterSlots = Record<string, unknown>;
 
 /**
+ * Player context for roster analysis.
+ */
+export interface PlayerContext {
+    id: string;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    proTeam: string;
+    position: string;
+    injuryStatus: 'ACTIVE' | 'OUT' | 'DAY_TO_DAY' | 'HEALTH_AND_SAFETY_PROTOCOLS' | 'INJURY_RESERVE' | 'SUSPENDED';
+    isInjured: boolean;
+    jersey?: string;
+}
+
+/**
  * Team context for prompt injection.
  */
 export interface TeamContext {
@@ -54,6 +69,10 @@ export interface TeamContext {
     };
     /** Whether this is the user's own team */
     isUserOwned?: boolean;
+    /** Team logo URL */
+    logo?: string;
+    /** Current roster */
+    roster?: PlayerContext[];
 }
 
 /**
@@ -117,6 +136,21 @@ export interface PromptContext {
 // ============================================================================
 
 /**
+ * Zod schema for validating PlayerContext objects.
+ */
+export const PlayerContextSchema = z.object({
+    id: z.string(),
+    firstName: z.string(),
+    lastName: z.string(),
+    fullName: z.string(),
+    proTeam: z.string(),
+    position: z.string(),
+    injuryStatus: z.enum(['ACTIVE', 'OUT', 'DAY_TO_DAY', 'HEALTH_AND_SAFETY_PROTOCOLS', 'INJURY_RESERVE', 'SUSPENDED']),
+    isInjured: z.boolean(),
+    jersey: z.string().optional(),
+});
+
+/**
  * Zod schema for validating TeamContext objects.
  */
 export const TeamContextSchema = z.object({
@@ -130,6 +164,8 @@ export const TeamContextSchema = z.object({
         ties: z.number(),
     }).optional(),
     isUserOwned: z.boolean().optional(),
+    logo: z.string().url().optional(),
+    roster: z.array(PlayerContextSchema).optional(),
 });
 
 /**

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchAndIngestNews } from "@/lib/services/news-service";
+import { fetchAndIngestNews } from "@/services/news.service";
 
 export async function GET(req: NextRequest) {
     try {

@@ -23,7 +23,7 @@ export function ChatInterface() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { activeTeamId, activeLeagueId, activeTeam } = usePerspective();
+  const { activeTeamId, activeLeagueId, activeTeam, isLoading: isPerspectiveLoading } = usePerspective();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -147,7 +147,7 @@ export function ChatInterface() {
                         placeholder="Analyze my roster, waivers, or trades..." 
                         className="flex-1 border-0 focus-visible:ring-0 shadow-none h-14 rounded-none px-4 text-lg font-medium placeholder:text-muted-foreground/50"
                     />
-                    <Button type="submit" size="icon" className="h-12 w-12 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95" disabled={!input.trim()}>
+                    <Button type="submit" size="icon" className="h-12 w-12 rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all active:scale-95" disabled={!input.trim() || isPerspectiveLoading}>
                         <Send className="h-5 w-5" />
                     </Button>
                 </form>

@@ -6,7 +6,7 @@ dotenv.config({ path: '.env.local' });
 async function main() {
     console.log("Running manual news ingestion...");
     // Dynamic import to ensure env vars are loaded
-    const { fetchAndIngestNews } = await import('../src/lib/services/news-service');
+    const { fetchAndIngestNews } = await import('../src/services/news.service');
 
     try {
         const count = await fetchAndIngestNews();

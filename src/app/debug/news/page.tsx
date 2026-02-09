@@ -1,4 +1,4 @@
-import { getLatestNews } from "@/lib/services/news-service";
+import { getLatestNews } from "@/services/news.service";
 
 export default async function NewsDebugPage() {
     const news = await getLatestNews(50);

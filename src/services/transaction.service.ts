@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from '@/utils/supabase/server';
-import { EspnClient } from '../espn/client';
+import { EspnClient } from '@/lib/espn/client';
 
 export async function getLatestTransactions(leagueId: string, limit = 5) {
     const supabase = await createClient();

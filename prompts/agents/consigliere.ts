@@ -1,4 +1,5 @@
-import type { PromptContext, SupportedLanguage } from '../types';
+import type { PromptContext, SupportedLanguage, PlayerContext } from '../types';
+import { getStatName } from '@/lib/espn/constants';
 
 // ============================================================================
 // Strategic Consigliere Prompt Templates
@@ -17,8 +18,28 @@ function formatScoringSettings(settings: Record<string, unknown>): string {
     if (entries.length === 0) return 'Custom scoring (see league settings).';
 
     return entries
-        .map(([stat, value]) => `${stat}: ${value > 0 ? '+' : ''}${value}`)
+        .map(([stat, value]) => {
+            const statId = parseInt(stat);
+            const name = isNaN(statId) ? stat : getStatName(statId, value);
+            return `${name}: ${value > 0 ? '+' : ''}${value}`;
+        })
         .join(', ');
+}
+
+/**
+ * Formats a player roster into a human-readable list.
+ * @param roster - Array of player context objects
+ * @returns Formatted roster string
+ */
+function formatRoster(roster?: PlayerContext[]): string {
+    if (!roster || roster.length === 0) return 'No roster data available.';
+
+    return roster
+        .map(p => {
+            const statusIndicator = p.isInjured ? ` [${p.injuryStatus}]` : '';
+            return `- ${p.fullName} (${p.position})${statusIndicator}`;
+        })
+        .join('\n');
 }
 
 /**
@@ -58,6 +79,9 @@ You are currently viewing the league from the perspective of:
 ${ctx.myTeam.record ? `- **Record**: ${ctx.myTeam.record.wins}-${ctx.myTeam.record.losses}${ctx.myTeam.record.ties > 0 ? `-${ctx.myTeam.record.ties}` : ''}` : ''}
 ${ctx.myTeam.isUserOwned ? '- **Status**: This is the USER\'S OWN TEAM - prioritize their success' : '- **Status**: Viewing as opponent - analyze their vulnerabilities'}
 
+## My Roster
+${formatRoster(ctx.myTeam.roster)}
+
 ## League Context
 - **League Name**: ${ctx.leagueName}
 - **Scoring System** (H2H Points): ${formatScoringSettings(ctx.scoringSettings)}
@@ -70,6 +94,9 @@ ${ctx.opponent.record ? `- **Opponent Record**: ${ctx.opponent.record.wins}-${ct
 ${ctx.matchup ? `
 - **Current Score**: ${ctx.matchup.myScore} - ${ctx.matchup.opponentScore} (${ctx.matchup.differential > 0 ? '+' : ''}${ctx.matchup.differential})
 - **Matchup Status**: ${ctx.matchup.status === 'in_progress' ? 'In Progress' : ctx.matchup.status === 'completed' ? 'Completed' : 'Upcoming'}
+
+### Opponent Roster
+${formatRoster(ctx.opponent.roster)}
 ` : ''}
 ` : ''}
 
@@ -121,6 +148,9 @@ const CONSIGLIERE_EL = (ctx: PromptContext): string => `
 ${ctx.myTeam.record ? `- **Ρεκόρ**: ${ctx.myTeam.record.wins}-${ctx.myTeam.record.losses}${ctx.myTeam.record.ties > 0 ? `-${ctx.myTeam.record.ties}` : ''}` : ''}
 ${ctx.myTeam.isUserOwned ? '- **Κατάσταση**: Αυτή είναι η ΟΜΑΔΑ ΤΟΥ ΧΡΗΣΤΗ - δώσε προτεραιότητα στην επιτυχία του' : '- **Κατάσταση**: Βλέπεις ως αντίπαλο - ανάλυσε τις αδυναμίες τους'}
 
+## Το Roster Μου
+${formatRoster(ctx.myTeam.roster)}
+
 ## Πλαίσιο League
 - **Όνομα League**: ${ctx.leagueName}
 - **Σύστημα Scoring** (H2H Points): ${formatScoringSettings(ctx.scoringSettings)}
@@ -133,6 +163,9 @@ ${ctx.opponent.record ? `- **Ρεκόρ Αντιπάλου**: ${ctx.opponent.rec
 ${ctx.matchup ? `
 - **Τρέχον Σκορ**: ${ctx.matchup.myScore} - ${ctx.matchup.opponentScore} (${ctx.matchup.differential > 0 ? '+' : ''}${ctx.matchup.differential})
 - **Κατάσταση Matchup**: ${ctx.matchup.status === 'in_progress' ? 'Σε Εξέλιξη' : ctx.matchup.status === 'completed' ? 'Ολοκληρώθηκε' : 'Επερχόμενο'}
+
+### Roster Αντιπάλου
+${formatRoster(ctx.opponent.roster)}
 ` : ''}
 ` : ''}
 

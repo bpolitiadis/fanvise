@@ -23,6 +23,7 @@ const embeddingModel = genAI.getGenerativeModel({
 
 const getEmbedding = async (text: string) => {
     try {
+        console.log(`[News Service] Embedding with model: ${embeddingModel.model}`);
         const result = await embeddingModel.embedContent(text);
         return result.embedding.values;
     } catch (error) {

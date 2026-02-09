@@ -63,9 +63,10 @@ export class EspnClient {
         }
     }
 
-    async getMatchups(scoringPeriodId?: number) {
+    async getMatchups(scoringPeriodId?: number, views: string[] = ["mMatchup"]) {
         // If no scoring period is provided, fetch for the current week (assumed logic elsewhere or default view)
-        let url = `https://fantasy.espn.com/apis/v3/games/ffl/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=mMatchup`;
+        const viewParams = views.map(v => `view=${v}`).join('&');
+        let url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?${viewParams}`;
 
         if (scoringPeriodId) {
             url += `&scoringPeriodId=${scoringPeriodId}`;

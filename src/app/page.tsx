@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getLatestNews } from "@/lib/services/news-service";
+import { getLatestNews } from "@/services/news.service";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Activity, Calendar, AlertTriangle, TrendingUp, MessageSquare, RefreshCw, ArrowRightLeft } from "lucide-react";
 import { MainLayout } from "@/components/layout/main-layout";
 import { usePerspective } from "@/lib/perspective-context";
-import { getLatestTransactions, fetchAndSyncTransactions } from "@/lib/services/transaction-service";
+import { getLatestTransactions, fetchAndSyncTransactions } from "@/services/transaction.service";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 

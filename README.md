@@ -45,4 +45,5 @@ LOG_LEVEL=info
 *   `src/app`: Next.js App Router pages.
 *   `src/components`: UI components (shadcn & custom).
 *   `src/lib`: Utilities (Supabase client, logger, cn).
-*   `src/services`: Decoupled API calls to Cloud Functions.
+*   `src/services`: Decoupled business logic and API services.
+*   `supabase`: Database migrations and schema definitions.
