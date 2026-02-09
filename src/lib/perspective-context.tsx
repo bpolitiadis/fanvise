@@ -14,19 +14,25 @@ export interface RosterSlots {
 }
 
 export interface League {
-  espn_id: string
+  league_id: string
+  name: string
   season_id?: string
   scoring_settings: ScoringSettings
-  roster_slots: RosterSlots
+  roster_settings: RosterSlots
   last_sync?: string
+  teams?: Team[] 
 }
 
 export interface Team {
-  team_id: string
-  espn_team_id: string
-  espn_league_id: string
-  manager_name?: string
-  is_user_owned: boolean
+  id: string
+  name: string
+  abbrev: string
+  logo?: string
+  manager: string
+  wins?: number
+  losses?: number
+  ties?: number
+  is_user_owned?: boolean
 }
 
 interface PerspectiveState {
@@ -36,7 +42,7 @@ interface PerspectiveState {
   activeLeague: League | null
   isLoading: boolean
   error: string | null
-  switchPerspective: (teamId: string) => Promise<void>
+  switchPerspective: (teamId: string | number) => Promise<void>
   isMyTeam: boolean
 }
 
@@ -56,60 +62,120 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
 
   const supabase = createClient()
 
-  const fetchContextData = useCallback(async (teamId: string) => {
+  const fetchContextData = useCallback(async (teamId?: string, forceLeagueId?: string) => {
     setIsLoading(true)
     setError(null)
     try {
-      // 1. Fetch Team
-      const { data: teamData, error: teamError } = await supabase
-        .from('teams')
-        .select('*')
-        .eq('team_id', teamId)
-        .single()
+      // 1. Determine which league to fetch
+      let leagueId = forceLeagueId
 
-      if (teamError) throw teamError
-      if (!teamData) throw new Error('Team not found')
+      if (!leagueId && teamId) {
+        // Try to find league for this team in user_leagues
+        const { data: userLeagueData } = await supabase
+          .from('user_leagues')
+          .select('league_id')
+          .eq('team_id', teamId)
+          .maybeSingle()
+        
+        leagueId = userLeagueData?.league_id
+      }
 
-      const team = teamData as Team
-      setActiveTeam(team)
-      setActiveLeagueId(team.espn_league_id) // Update derived state
+      // Fallback to env var if still no leagueId
+      if (!leagueId) {
+        leagueId = process.env.NEXT_PUBLIC_ESPN_LEAGUE_ID
+        console.log('Using default league ID from env:', leagueId)
+      }
 
-      // 2. Fetch League (using espn_league_id from team)
+      if (!leagueId) {
+        throw new Error('No league context available. Check NEXT_PUBLIC_ESPN_LEAGUE_ID.')
+      }
+
+      console.log('Fetching league data for ID:', leagueId)
+
+      // 2. Fetch League
       const { data: leagueData, error: leagueError } = await supabase
         .from('leagues')
         .select('*')
-        .eq('espn_id', team.espn_league_id)
+        .eq('league_id', leagueId)
         .single()
 
-      if (leagueError) throw leagueError
-      
-      setActiveLeague(leagueData as League)
-     
+      if (leagueError) {
+        console.error('Supabase error fetching league:', leagueError)
+        throw new Error(`Database error: ${leagueError.message}`)
+      }
+      if (!leagueData) throw new Error('League not found')
+
+      const league = leagueData as League
+      setActiveLeague(league)
+      setActiveLeagueId(league.league_id)
+
+      // 3. Set Active Team if teamId is provided
+      if (teamId) {
+        const teams = (league.teams as Team[]) || []
+        const team = teams.find(t => String(t.id) === String(teamId))
+        if (team) {
+          setActiveTeam(team)
+          setActiveTeamId(team.id)
+        } else {
+          console.warn(`Team ${teamId} not found in league ${leagueId}`)
+          setActiveTeam(null)
+          setActiveTeamId(null)
+        }
+      } else {
+        setActiveTeam(null)
+        setActiveTeamId(null)
+      }
+
     } catch (err) {
       console.error('Failed to load perspective:', err)
       const message = err instanceof Error ? err.message : 'Failed to load perspective'
       setError(message)
-      // Optional: Clear invalid storage if it fails?
     } finally {
       setIsLoading(false)
     }
   }, [supabase])
 
-  // Initialize from LocalStorage
+  // Initialize from LocalStorage or default from user_leagues
   useEffect(() => {
-    const storedTeamId = localStorage.getItem(STORAGE_KEY)
-    if (storedTeamId) {
-      setActiveTeamId(storedTeamId)
-      fetchContextData(storedTeamId)
-    } else {
-      setIsLoading(false)
-    }
-  }, [fetchContextData])
+    const init = async () => {
+      const storedTeamId = localStorage.getItem(STORAGE_KEY)
+      
+      if (storedTeamId) {
+        // We have a saved team, use it
+        await fetchContextData(storedTeamId)
+      } else {
+        // Check if user is logged in
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          // Try to get their active team
+          const { data: userLeagueData } = await supabase
+            .from('user_leagues')
+            .select('team_id, league_id')
+            .eq('user_id', user.id)
+            .eq('is_active', true)
+            .maybeSingle()
 
-  const switchPerspective = async (teamId: string) => {
-    setActiveTeamId(teamId)
-    localStorage.setItem(STORAGE_KEY, teamId)
-    await fetchContextData(teamId)
+          if (userLeagueData?.team_id) {
+            await fetchContextData(userLeagueData.team_id, userLeagueData.league_id)
+          } else {
+            // Logged in but no active team, just load default league
+            await fetchContextData()
+          }
+        } else {
+          // Not logged in, load default league
+          await fetchContextData()
+        }
+      }
+    }
+    init()
+  }, [fetchContextData, supabase])
+
+  const switchPerspective = async (teamId: string | number) => {
+    const id = String(teamId)
+    setActiveTeamId(id)
+    localStorage.setItem(STORAGE_KEY, id)
+    await fetchContextData(id)
   }
 
   const isMyTeam = activeTeam?.is_user_owned ?? false
