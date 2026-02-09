@@ -6,12 +6,15 @@ import type { PromptContext, SupportedLanguage } from '../types';
 
 /**
  * Formats scoring settings into a human-readable string.
+ * Filters for numeric values only (ignores complex ESPN metadata).
  * @param settings - The scoring settings object
  * @returns Formatted scoring rules string
  */
-function formatScoringSettings(settings: Record<string, number>): string {
-    const entries = Object.entries(settings);
-    if (entries.length === 0) return 'No custom scoring rules defined.';
+function formatScoringSettings(settings: Record<string, unknown>): string {
+    const entries = Object.entries(settings)
+        .filter(([_, value]) => typeof value === 'number') as [string, number][];
+
+    if (entries.length === 0) return 'Custom scoring (see league settings).';
 
     return entries
         .map(([stat, value]) => `${stat}: ${value > 0 ? '+' : ''}${value}`)
@@ -20,11 +23,14 @@ function formatScoringSettings(settings: Record<string, number>): string {
 
 /**
  * Formats roster slots into a human-readable string.
+ * Filters for numeric values only (ignores complex ESPN metadata).
  * @param slots - The roster slots object
  * @returns Formatted roster configuration string
  */
-function formatRosterSlots(slots: Record<string, number>): string {
-    const entries = Object.entries(slots);
+function formatRosterSlots(slots: Record<string, unknown>): string {
+    const entries = Object.entries(slots)
+        .filter(([_, value]) => typeof value === 'number') as [string, number][];
+
     if (entries.length === 0) return 'Standard roster configuration.';
 
     return entries

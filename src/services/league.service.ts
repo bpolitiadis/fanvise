@@ -386,13 +386,14 @@ export function calculateFantasyPoints(
 
     for (const [category, value] of Object.entries(stats)) {
         const weight = scoringSettings[category];
-        if (weight !== undefined) {
+        if (typeof weight === 'number') {
             total += value * weight;
         }
     }
 
     return Math.round(total * 100) / 100; // Round to 2 decimal places
 }
+
 
 /**
  * Formats an intelligence snapshot for direct prompt injection.

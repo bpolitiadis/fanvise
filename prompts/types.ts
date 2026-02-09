@@ -23,17 +23,16 @@ export type SupportedLanguage = 'en' | 'el';
 
 /**
  * Scoring settings for the league.
- * Maps stat categories to their point values.
- * @example { "PTS": 1, "AST": 1.5, "REB": 1.2, "BLK": 3, "STL": 3, "TO": -1 }
+ * ESPN returns complex nested objects, so we accept any valid JSON.
+ * For point calculations, we extract the relevant numeric values at runtime.
  */
-export type ScoringSettings = Record<string, number>;
+export type ScoringSettings = Record<string, unknown>;
 
 /**
  * Roster slot configuration.
- * Maps position slots to their count.
- * @example { "PG": 1, "SG": 1, "SF": 1, "PF": 1, "C": 1, "UTIL": 3, "BE": 3 }
+ * ESPN returns complex nested objects, so we accept any valid JSON.
  */
-export type RosterSlots = Record<string, number>;
+export type RosterSlots = Record<string, unknown>;
 
 /**
  * Team context for prompt injection.
@@ -160,8 +159,8 @@ export const ScheduleContextSchema = z.object({
 export const PromptContextSchema = z.object({
     language: z.enum(['en', 'el']),
     leagueName: z.string(),
-    scoringSettings: z.record(z.string(), z.number()),
-    rosterSlots: z.record(z.string(), z.number()),
+    scoringSettings: z.record(z.string(), z.any()),
+    rosterSlots: z.record(z.string(), z.any()),
     myTeam: TeamContextSchema,
     opponent: TeamContextSchema.optional(),
     matchup: MatchupContextSchema.optional(),
