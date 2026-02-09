@@ -9,7 +9,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Activity, Calendar, AlertTriangle, TrendingUp, MessageSquare, RefreshCw, ArrowRightLeft } from "lucide-react";
 import { MainLayout } from "@/components/layout/main-layout";
 import { usePerspective } from "@/lib/perspective-context";
-import { Team } from "@/lib/db/leagues";
 import { getLatestTransactions, fetchAndSyncTransactions } from "@/lib/services/transaction-service";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -30,6 +29,20 @@ export interface TransactionItem {
   description: string;
   published_at: string;
 }
+
+/** Team data structure for UI rendering */
+export interface Team {
+  id: string | number;
+  name: string;
+  abbrev: string;
+  logo?: string;
+  manager: string;
+  is_user_owned?: boolean;
+  wins?: number;
+  losses?: number;
+  ties?: number;
+}
+
 
 // Mock schedule data temporarily removed for realism audit
 

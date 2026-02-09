@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EspnClient } from "@/lib/espn/client";
-import { upsertLeague } from "@/lib/db/leagues";
+import { upsertLeague } from "@/services/league.service";
 
 export async function POST(req: NextRequest) {
     try {
