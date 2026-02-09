@@ -5,7 +5,7 @@ The backend of FanVise is powered by a set of TypeScript services and an AI Orch
 ## AI Orchestrator (`src/lib/agents/orchestrator.ts`)
 
 The Orchestrator is the central "brain" of the application. It handles:
-- **Model Selection**: Defaults to `gemini-1.5-flash-8b` (or `gemini-1.5-flash`) for low-latency responses.
+- **Model Selection**: Defaults to `gemini-2.0-flash` (or `gemini-flash-lite-latest`) for low-latency responses.
 - **Local AI Fallback**: Support for Ollama (`deepseek-r1:14b`) for local development or privacy-focused usage.
 - **Retry Logic**: Implements exponential backoff for 429 (rate limit) errors.
 

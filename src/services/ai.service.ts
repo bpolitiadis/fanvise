@@ -19,7 +19,7 @@ import { AIStructuredResponseSchema, type AIStructuredResponse } from '@/prompts
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
 /** Gemini model to use */
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash-8b';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
 /** Whether to use local AI (Ollama) instead of Gemini */
 const USE_LOCAL_AI = process.env.USE_LOCAL_AI === 'true';
@@ -142,6 +142,7 @@ function getGeminiModel(options: GenerateOptions = {}): GenerativeModel {
         modelConfig.systemInstruction = options.systemInstruction;
     }
 
+    console.log(`[AI Service] Initializing Gemini with model: ${GEMINI_MODEL}`);
     return genAI.getGenerativeModel(modelConfig);
 }
 
