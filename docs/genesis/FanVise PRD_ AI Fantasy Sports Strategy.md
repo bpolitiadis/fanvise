@@ -1,5 +1,8 @@
 # **Product Requirements Document (PRD)**
 
+> [!NOTE]
+> **ARCHITECTURAL SHIFT (Feb 2026):** For the initial Proof of Concept (PoC), the architecture has shifted from the GCP/Python Cloud Functions approach described below to a simplified **Next.js + Supabase** monolithic-but-modular stack. This allows for faster iteration and reduced latency during early development. The GCP path remains a target for future enterprise scaling.
+
 **Product Name:** FanVise
 
 **Version:** 1.0 (MVP \- "The Intelligent Edge")

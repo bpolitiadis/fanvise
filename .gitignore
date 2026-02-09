@@ -23,6 +23,9 @@
 # misc
 .DS_Store
 *.pem
+models.json
+/playwright-report/
+/test-results/
 
 # debug
 npm-debug.log*

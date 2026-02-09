@@ -1,5 +1,10 @@
 ### **1\. The Strategy: Relational Core \+ Intelligence Layer**
 
+> [!NOTE]
+> **HISTORICAL CONTEXT:** This ERD represents the initial data design. The current implementation in Supabase follows this strategy closely but leverages `pgvector` for the Intelligence Layer within the same PostgreSQL instance.
+
+
+
 The architecture is split into two zones: the **Operational Zone** (PostgreSQL) for league mechanics and the **Cognitive Zone** (pgvector) for AI-driven insights.
 
 ### ---

@@ -1,0 +1,115 @@
+> [!WARNING]
+> This architecture document is **DEPRECATED** as of Feb 2026.
+> Please refer to [FanVise_Architecture_Simple_Chatbot.md](FanVise_Architecture_Simple_Chatbot.md) for the current simplified architecture.
+
+## 1. High-Level System Architecture
+
+FanVise utilizes a decoupled, hybrid-cloud approach to balance UI performance with heavy-duty AI processing.
+
+```mermaid
+graph TD
+    User((User/Manager)) -->|HTTPS/Auth| NextJS[Next.js 16 - Vercel/Cloud Run]
+    NextJS -->|Client-Side| SupabaseAuth[Supabase Auth]
+    
+    subgraph "GCP Project: fanvise-prod"
+        NextJS -->|Secure API Call| GCF[Python Cloud Functions Gen 2]
+        GCF -->|Secret Access| GSM[GCP Secret Manager]
+        GCF -->|Scrape| ESPN[ESPN Fantasy API]
+    end
+
+    subgraph "Data Layer"
+        NextJS -->|Read/Write| Postgres[Supabase PostgreSQL]
+        GCF -->|Vector Upsert/Search| PgVector[Supabase pgvector]
+    end
+
+    GSM -.->|Injects swid/espn_s2| GCF
+
+```
+
+## 2. Service Boundaries
+
+To maintain high reliability and "Clean Code" standards, logic is strictly partitioned by runtime:
+
+| Feature | Runtime | Responsibility |
+| --- | --- | --- |
+| **Frontend/UX** | **Node.js (Next.js)** | State management, React Server Components (RSC), Supabase Auth sessions, and League Heatmap visualization. |
+| **Identity** | **Supabase** | JWT handling, Row Level Security (RLS) enforcement, and User Profile storage. |
+| **Intelligence** | **Python (GCF)** | LLM orchestration (Gemini 1.5 Flash), Vector Embeddings (Text-Embedding-004), and BeautifulSoup/Request scraping logic. |
+| **Persistence** | **PostgreSQL** | Relational league data and high-dimensional vector storage for player news. |
+
+## 3. CI/CD Pipeline Design
+
+We implement **Path-Based Deployments** to minimize the blast radius of changes.
+
+### A. Frontend Pipeline (Vercel/Cloud Run)
+
+* **Trigger:** Push to `main` involving changes in `/src/**` or `root`.
+* **Validation:** `npm run lint` and `npm run test` (Vitest) must pass.
+* **Reliability Check:** Automated Vercel "Preview" deployments for QA smoke testing.
+
+### B. Backend Pipeline (Google Cloud Build)
+
+* **Trigger:** Push to `main` involving changes in `/services/**`.
+* **Deployment Method:** Cloud Build executes the following `gcloud` logic:
+```bash
+gcloud functions deploy fanvise-rag-engine \
+  --gen2 \
+  --runtime=python311 \
+  --region=us-central1 \
+  --source=./services/rag-engine \
+  --entry-point=handler \
+  --trigger-http \
+  --service-account=gcf-sa@fanvise-prod.iam.gserviceaccount.com
+
+```
+
+
+* **Automated Resilience Testing:** Post-deployment, a "Canary" function verifies the ESPN connectivity before shifting 100% of traffic to the new revision.
+
+## 4. Secret Management & Security Posture
+
+Following the **Principle of Least Privilege**, we do not use `.env` files for production secrets.
+
+### Secret Storage
+
+* **Sensitive Keys:** `ESPN_SWID`, `ESPN_S2`, `SUPABASE_SERVICE_ROLE_KEY`.
+* **Storage:** GCP Secret Manager.
+
+### Injection Logic
+
+Secrets are injected directly into the Python GCF runtime as environment variables via the service account.
+
+* **Terraform Snippet (IaC):**
+```hcl
+resource "google_cloudfunctions2_function" "rag_function" {
+  # ... configuration ...
+  service_config {
+    secret_environment_variables {
+      key        = "ESPN_S2"
+      project_id = var.project_id
+      secret     = "espn_s2_cookie"
+      version    = "latest"
+    }
+  }
+}
+
+```
+
+
+* **IAM Constraint:** The Cloud Function service account only holds the `roles/secretmanager.secretAccessor` role for the specific secret versions required.
+
+## 5. Reliability & QA: "Chaos Engineering" for Fantasy Data
+
+As a Senior QA peer, you must account for "Data Drift" and "External API Fragility."
+
+1. **Automated Resilience Testing:** We use **Synthetic Monitors** in Cloud Monitoring to ping the Python GCF every 5 minutes. If the ESPN API returns a 401 (Cookie Expired), the SRE team is alerted via PagerDuty before users notice.
+2. **Chaos Engineering (Lab Mode):** We will periodically inject 500 errors into the `/services` route to test the Next.js **Error Boundary** resilience. The UI must degrade gracefully, showing cached "Stale Data" rather than a white screen.
+3. **Observability:** All Python logs are structured in JSON for Cloud Logging, tracking `correlation_id` across the Next.js -> GCF boundary.
+
+---
+
+**Next Steps:**
+
+* [ ] Initialize Terraform providers for GCP Secret Manager.
+* [ ] Configure GitHub Action Workflows with `paths-ignore` logic to prevent redundant builds.
+* [ ] Define the `alerting_policy` for GCF execution duration > 10s.
