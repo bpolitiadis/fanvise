@@ -42,13 +42,20 @@ create table if not exists public.user_leagues (
     unique(user_id, league_id)
 );
 
--- NEWS_EMBEDDINGS: RAG Store
-create table if not exists public.news_embeddings (
+-- NEWS_ITEMS: Enriched RAG Store
+create table if not exists public.news_items (
   id uuid primary key default gen_random_uuid(),
-  content text, -- The actual news snippet
-  url text, -- Source URL
-  player_name text, -- Meta-filter
-  embedding vector(768), -- Google Gecko Dimension (768)
+  title text not null,
+  url text unique not null,
+  content text,
+  summary text,
+  published_at timestamptz not null,
+  source text not null,
+  player_name text,
+  sentiment text, -- e.g., 'POSITIVE', 'NEGATIVE', 'NEUTRAL'
+  category text, -- e.g., 'Injury', 'Trade', 'Lineup', 'Performance'
+  impact_backup text, -- Next man up
+  embedding vector(768), -- Google Gemini Dimension
   created_at timestamptz default now()
 );
 
@@ -72,4 +79,4 @@ on public.user_leagues for all to authenticated using (auth.uid() = user_id);
 
 -- Allow read access to news for everyone
 create policy "News is viewable by everyone" 
-on public.news_embeddings for select to authenticated using (true);
+on public.news_items for select to authenticated using (true);

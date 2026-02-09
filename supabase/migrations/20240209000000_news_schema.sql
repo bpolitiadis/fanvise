@@ -9,8 +9,12 @@ create table if not exists news_items (
   content text,
   summary text,
   published_at timestamptz not null,
-  source text not null, -- e.g., 'ESPN', 'Rotowire'
-  embedding vector(768), -- Google Gemini embedding dimension
+  source text not null,
+  player_name text,
+  sentiment text,
+  category text,
+  impact_backup text,
+  embedding vector(768),
   created_at timestamptz default now()
 );
 
@@ -18,7 +22,8 @@ create table if not exists news_items (
 create or replace function match_news_documents (
   query_embedding vector(768),
   match_threshold float,
-  match_count int
+  match_count int,
+  days_back int default 7
 )
 returns table (
   id uuid,
@@ -28,6 +33,10 @@ returns table (
   summary text,
   published_at timestamptz,
   source text,
+  player_name text,
+  sentiment text,
+  category text,
+  impact_backup text,
   similarity float
 )
 language plpgsql
@@ -42,10 +51,15 @@ begin
     news_items.summary,
     news_items.published_at,
     news_items.source,
+    news_items.player_name,
+    news_items.sentiment,
+    news_items.category,
+    news_items.impact_backup,
     1 - (news_items.embedding <=> query_embedding) as similarity
   from news_items
   where 1 - (news_items.embedding <=> query_embedding) > match_threshold
-  order by news_items.published_at desc, similarity desc -- Prioritize recency then similarity
+    and news_items.published_at > now() - (days_back || ' days')::interval
+  order by similarity desc, news_items.published_at desc
   limit match_count;
 end;
 $$;
