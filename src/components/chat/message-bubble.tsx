@@ -209,12 +209,13 @@ export function MessageBubble({
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                code({ inline, className, children, ...props }) {
+                code({ className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || "");
                   const language = match?.[1] || "text";
+                  const isInline = !match;
                   const code = String(children).replace(/\n$/, "");
 
-                  if (inline) {
+                  if (isInline) {
                     return (
                       <code className={className} {...props}>
                         {children}
