@@ -8,8 +8,8 @@
  */
 
 import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai';
-import { z } from 'zod';
 import { AIStructuredResponseSchema, type AIStructuredResponse } from '@/prompts/types';
+import { withRetry, sleep } from '@/utils/retry';
 
 // ============================================================================
 // Configuration
@@ -22,16 +22,36 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
 /** Whether to use local AI (Ollama) instead of Gemini */
-const USE_LOCAL_AI = process.env.USE_LOCAL_AI === 'true';
+const USE_LOCAL_AI = process.env.USE_LOCAL_AI;
 
 /** Ollama model name */
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'deepseek-r1:14b';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL;
 
 /** Ollama API endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
 
 // Initialize Gemini client
 const genAI = GOOGLE_API_KEY ? new GoogleGenerativeAI(GOOGLE_API_KEY) : null;
+
+/** Embedding Provider Type */
+export type EmbeddingProviderType = 'gemini' | 'ollama' | 'openai';
+
+/** Intelligence Provider Type */
+export type IntelligenceProviderType = 'gemini' | 'ollama';
+
+/**
+ * Interface for Embedding Providers
+ */
+export interface EmbeddingProvider {
+    embedContent(text: string): Promise<number[]>;
+}
+
+/**
+ * Interface for Intelligence Providers
+ */
+export interface IntelligenceProvider {
+    extractIntelligence(prompt: string): Promise<any>;
+}
 
 // ============================================================================
 // Types
@@ -68,54 +88,6 @@ export type StreamResult = AsyncIterable<string>;
 // Utility Functions
 // ============================================================================
 
-/**
- * Sleep for a specified duration.
- * @param ms - Milliseconds to sleep
- */
-const sleep = (ms: number): Promise<void> =>
-    new Promise(resolve => setTimeout(resolve, ms));
-
-/**
- * Executes a function with exponential backoff retry on 429 errors.
- * 
- * @param fn - The async function to execute
- * @param maxRetries - Maximum number of retry attempts
- * @param initialDelay - Initial delay in milliseconds
- * @returns The result of the function
- * @throws The last error if all retries fail
- */
-async function withRetry<T>(
-    fn: () => Promise<T>,
-    maxRetries: number = 3,
-    initialDelay: number = 1000
-): Promise<T> {
-    let lastError: Error | undefined;
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-            return await fn();
-        } catch (error: unknown) {
-            lastError = error as Error;
-            const errorMessage = lastError?.message || '';
-            const isRateLimited = errorMessage.includes('429') ||
-                (error as { status?: number })?.status === 429;
-
-            if (isRateLimited) {
-                const delay = initialDelay * Math.pow(2, attempt);
-                console.warn(
-                    `AI API rate limited - Retrying in ${delay}ms (Attempt ${attempt + 1}/${maxRetries})`
-                );
-                await sleep(delay);
-                continue;
-            }
-
-            // Non-recoverable error, throw immediately
-            throw error;
-        }
-    }
-
-    throw lastError;
-}
 
 /**
  * Gets a configured Gemini model instance.
@@ -352,6 +324,195 @@ export async function generateStructuredResponse(
     }
 }
 
+// ============================================================================
+// Intelligence Provider Implementations
+// ============================================================================
+
+/**
+ * Gemini Intelligence Provider
+ */
+class GeminiIntelligenceProvider implements IntelligenceProvider {
+    async extractIntelligence(prompt: string): Promise<any> {
+        if (!genAI) throw new Error('Gemini API key not configured');
+
+        const generationModelCandidates = [
+            "gemini-2.0-flash",
+            "gemini-flash-latest",
+            "gemini-1.5-flash",
+        ];
+
+        let lastError: any;
+        for (const modelName of generationModelCandidates) {
+            try {
+                const model = genAI.getGenerativeModel({ model: modelName });
+                const result = await withRetry(async () => {
+                    const response = await model.generateContent({
+                        contents: [{ role: "user", parts: [{ text: prompt }] }],
+                        generationConfig: { responseMimeType: "application/json" }
+                    });
+                    const text = response.response.text();
+                    return JSON.parse(text);
+                });
+                return result;
+            } catch (error) {
+                lastError = error;
+                console.warn(`[AI Service] Gemini model ${modelName} failed or not available. Trying next...`);
+            }
+        }
+        throw lastError;
+    }
+}
+
+/**
+ * Ollama Intelligence Provider (Local)
+ */
+class OllamaIntelligenceProvider implements IntelligenceProvider {
+    private model: string;
+
+    constructor(model: string = OLLAMA_MODEL || 'deepseek-r1:14b') {
+        this.model = model;
+    }
+
+    async extractIntelligence(prompt: string): Promise<any> {
+        console.log(`[AI Service] Using local Ollama model: ${this.model}`);
+
+        const response = await fetch('http://localhost:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: this.model,
+                prompt: prompt,
+                stream: false,
+                format: 'json',
+                options: {
+                    temperature: 0.1, // Low temperature for extraction reliability
+                }
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ollama Intelligence Error: ${response.status} ${response.statusText}`);
+        }
+
+        const json = await response.json();
+        try {
+            // Ollama responses sometimes contain think tags if using DeepSeek R1
+            let content = json.response;
+            if (content.includes('</think>')) {
+                content = content.split('</think>').pop()?.trim() || content;
+            }
+            return JSON.parse(content);
+        } catch (error) {
+            console.error('[AI Service] Failed to parse JSON from Ollama:', json.response);
+            throw new Error('Invalid JSON response from local AI');
+        }
+    }
+}
+
+/**
+ * Gets the configured intelligence provider based on environment variables.
+ */
+export function getIntelligenceProvider(): IntelligenceProvider {
+    if (USE_LOCAL_AI === 'true') {
+        return new OllamaIntelligenceProvider();
+    }
+    return new GeminiIntelligenceProvider();
+}
+
+/**
+ * High-level function to extract structured intelligence using the configured provider.
+ */
+export async function extractIntelligence(prompt: string): Promise<any> {
+    const provider = getIntelligenceProvider();
+    return provider.extractIntelligence(prompt);
+}
+
+// ============================================================================
+// Embedding Provider Implementations
+// ============================================================================
+
+/**
+ * Gemini Embedding Provider
+ */
+class GeminiEmbeddingProvider implements EmbeddingProvider {
+    async embedContent(text: string): Promise<number[]> {
+        if (!genAI) throw new Error('Gemini API key not configured');
+        const modelName = process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004';
+        const model = genAI.getGenerativeModel({ model: modelName });
+
+        return withRetry(async () => {
+            const result = await model.embedContent(text);
+            if (!result.embedding?.values) {
+                throw new Error(`Empty embedding result from Gemini (${modelName})`);
+            }
+            return result.embedding.values;
+        });
+    }
+}
+
+/**
+ * Ollama Embedding Provider (Local)
+ */
+class OllamaEmbeddingProvider implements EmbeddingProvider {
+    private model: string;
+
+    constructor(model: string = process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text') {
+        this.model = model;
+    }
+
+    async embedContent(text: string): Promise<number[]> {
+        const response = await fetch('http://localhost:11434/api/embeddings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: this.model,
+                prompt: text,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ollama Embedding Error: ${response.status} ${response.statusText}`);
+        }
+
+        const json = await response.json();
+        if (!json.embedding) {
+            throw new Error(`Empty embedding result from Ollama (${this.model})`);
+        }
+
+        return json.embedding;
+    }
+}
+
+/**
+ * Gets the configured embedding provider based on environment variables.
+ */
+export function getEmbeddingProvider(): EmbeddingProvider {
+    const providerType = (process.env.EMBEDDING_PROVIDER || 'gemini').toLowerCase();
+
+    switch (providerType) {
+        case 'ollama':
+            console.log(`[AI Service] Using Ollama Embedding Provider (${process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text'})`);
+            return new OllamaEmbeddingProvider();
+        case 'openai':
+            throw new Error('OpenAI Embedding Provider not yet implemented');
+        case 'gemini':
+        default:
+            console.log(`[AI Service] Using Gemini Embedding Provider (${process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004'})`);
+            return new GeminiEmbeddingProvider();
+    }
+}
+
+/**
+ * High-level function to generate embeddings using the configured provider.
+ * 
+ * @param text - The content to embed
+ * @returns Vector embedding (array of numbers)
+ */
+export async function getEmbedding(text: string): Promise<number[]> {
+    const provider = getEmbeddingProvider();
+    return provider.embedContent(text);
+}
+
 /**
  * Checks if the AI service is properly configured and available.
  * 
@@ -360,19 +521,24 @@ export async function generateStructuredResponse(
 export function getServiceStatus(): {
     provider: 'gemini' | 'ollama';
     model: string;
+    embeddingProvider: string;
     configured: boolean;
 } {
-    if (USE_LOCAL_AI) {
+    const embeddingProvider = process.env.EMBEDDING_PROVIDER || 'gemini';
+
+    if (USE_LOCAL_AI === 'true') {
         return {
             provider: 'ollama',
-            model: OLLAMA_MODEL,
-            configured: true, // Ollama availability is runtime-dependent
+            model: OLLAMA_MODEL || 'unknown',
+            embeddingProvider,
+            configured: true,
         };
     }
 
     return {
         provider: 'gemini',
         model: GEMINI_MODEL,
+        embeddingProvider,
         configured: !!GOOGLE_API_KEY,
     };
 }
