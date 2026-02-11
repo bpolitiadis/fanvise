@@ -19,9 +19,9 @@ export async function getLatestTransactions(leagueId: string, limit = 5) {
     return data;
 }
 
-export async function fetchAndSyncTransactions(leagueId: string, year: string, sport: string) {
+export async function fetchAndSyncTransactions(leagueId: string, year: string, sport: string, existingSupabase?: any) {
     console.log(`Syncing transactions for league ${leagueId}...`);
-    const supabase = await createClient();
+    const supabase = existingSupabase || await createClient();
 
     const swid = process.env.ESPN_SWID;
     const s2 = process.env.ESPN_S2;

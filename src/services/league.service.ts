@@ -209,7 +209,8 @@ function toTeamContext(dbTeam: DbTeam, roster?: PlayerContext[]): TeamContext {
  */
 async function fetchMatchupFromEspn(
     leagueId: string,
-    teamId: string
+    teamId: string,
+    seasonId: string
 ): Promise<{
     matchup: MatchupContext;
     opponentId: string;
@@ -217,7 +218,7 @@ async function fetchMatchupFromEspn(
     opponentRoster?: PlayerContext[];
 } | null> {
     try {
-        const year = new Date().getFullYear().toString();
+        const year = seasonId;
         const sport = process.env.NEXT_PUBLIC_ESPN_SPORT || 'fba';
 
         const swid = process.env.ESPN_SWID;
@@ -249,24 +250,36 @@ async function fetchMatchupFromEspn(
         const opponentScore = opponentData?.totalPoints || 0;
 
         // Map roster data
-        const mapRoster = (rosterData: any): PlayerContext[] => {
+        const mapRoster = (rosterData: any, targetSeasonId: string): PlayerContext[] => {
             if (!rosterData?.entries || !Array.isArray(rosterData.entries)) return [];
-            return rosterData.entries.map((entry: any) => ({
-                id: String(entry.playerId),
-                firstName: entry.playerPoolEntry?.player?.firstName || '',
-                lastName: entry.playerPoolEntry?.player?.lastName || '',
-                fullName: entry.playerPoolEntry?.player?.fullName || 'Unknown Player',
-                proTeam: String(entry.playerPoolEntry?.player?.proTeamId || ''),
-                position: getPositionName(entry.playerPoolEntry?.player?.defaultPositionId || ''),
-                injuryStatus: entry.playerPoolEntry?.player?.injuryStatus || 'ACTIVE',
-                isInjured: entry.playerPoolEntry?.player?.injured || false,
-                jersey: entry.playerPoolEntry?.player?.jersey,
-                // Performance Metrics
-                avgPoints: entry.playerPoolEntry?.player?.stats?.find((s: any) => s.statSourceId === 0 && s.statSplitTypeId === 0)?.appliedAverage,
-                totalPoints: entry.playerPoolEntry?.player?.stats?.find((s: any) => s.statSourceId === 0 && s.statSplitTypeId === 0)?.appliedTotal,
-                gamesPlayed: entry.playerPoolEntry?.player?.stats?.find((s: any) => s.statSourceId === 0 && s.statSplitTypeId === 0)?.stats?.['42'],
-                avgStats: entry.playerPoolEntry?.player?.stats?.find((s: any) => s.statSourceId === 0 && s.statSplitTypeId === 0)?.stats,
-            }));
+            return rosterData.entries.map((entry: any) => {
+                const player = entry.playerPoolEntry?.player;
+                const stats = player?.stats || [];
+
+                // Find stats specifically for the target season
+                const seasonStats = stats.find((s: any) =>
+                    s.statSourceId === 0 &&
+                    s.statSplitTypeId === 0 &&
+                    String(s.seasonId) === targetSeasonId
+                );
+
+                return {
+                    id: String(entry.playerId),
+                    firstName: player?.firstName || '',
+                    lastName: player?.lastName || '',
+                    fullName: player?.fullName || 'Unknown Player',
+                    proTeam: String(player?.proTeamId || ''),
+                    position: getPositionName(player?.defaultPositionId || ''),
+                    injuryStatus: player?.injuryStatus || 'ACTIVE',
+                    isInjured: player?.injured || false,
+                    jersey: player?.jersey,
+                    // Performance Metrics
+                    avgPoints: seasonStats?.appliedAverage,
+                    totalPoints: seasonStats?.appliedTotal,
+                    gamesPlayed: seasonStats?.stats?.['42'],
+                    avgStats: seasonStats?.stats,
+                };
+            });
         };
 
         const opponentId = String(opponentData?.teamId);
@@ -287,8 +300,8 @@ async function fetchMatchupFromEspn(
             return roster;
         };
 
-        const myRoster = mapRoster(findRoster(teamIdNum));
-        const opponentRoster = mapRoster(findRoster(parseInt(opponentId)));
+        const myRoster = mapRoster(findRoster(teamIdNum), year);
+        const opponentRoster = mapRoster(findRoster(parseInt(opponentId)), year);
 
         console.log(`[League Service] Mapped rosters - My: ${myRoster.length}, Opponent: ${opponentRoster.length}`);
 
@@ -388,7 +401,7 @@ export async function buildIntelligenceSnapshot(
     }
 
     // 3. Fetch matchup from ESPN (includes opponent ID)
-    const matchupResult = await fetchMatchupFromEspn(leagueId, teamId);
+    const matchupResult = await fetchMatchupFromEspn(leagueId, teamId, league.season_id);
 
     const myTeam = toTeamContext(myTeamDb, matchupResult?.myRoster);
 

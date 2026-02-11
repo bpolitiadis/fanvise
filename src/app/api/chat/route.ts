@@ -10,6 +10,8 @@ interface NewsItem {
     summary?: string | null;
     content?: string | null;
     published_at?: string | null;
+    source?: string | null;
+    player_name?: string | null;
 }
 
 interface RequestMessage {
@@ -47,9 +49,11 @@ export async function POST(req: NextRequest) {
             const newsItems = await searchNews(lastMessage.content);
             if (newsItems && newsItems.length > 0) {
                 newsContext = newsItems
-                    .map((item) => {
+                    .map((item: any) => {
                         const typedItem = item as NewsItem;
-                        return `- [${typedItem.published_at || 'Recent'}] ${typedItem.title || "News"}: ${typedItem.summary || typedItem.content || ""}`;
+                        const sourceTag = typedItem.source ? ` [SOURCE: ${typedItem.source}]` : '';
+                        const playerTag = typedItem.player_name ? ` [PLAYER: ${typedItem.player_name}]` : '';
+                        return `- [${typedItem.published_at || 'Recent'}]${sourceTag}${playerTag} ${typedItem.title || "News"}: ${typedItem.summary || typedItem.content || ""}`;
                     })
                     .join("\n");
             }

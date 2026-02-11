@@ -1,6 +1,7 @@
 import Parser from 'rss-parser';
 import { createClient } from '@supabase/supabase-js'; // Use direct client for service role
 import { GoogleGenerativeAI, type GenerativeModel } from "@google/generative-ai";
+import { withRetry, sleep } from '@/utils/retry';
 
 const parser = new Parser();
 
@@ -31,142 +32,65 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
-const embeddingModelCache = new Map<string, GenerativeModel>();
-const embeddingModelCandidates = [
-    "gemini-embedding-001", // Discovered working list
-    "embedding-001",
-    process.env.GEMINI_EMBEDDING_MODEL,
-    "text-embedding-004",
-    "text-embedding-001",
-].filter(Boolean) as string[];
-
-const getEmbeddingModel = (modelName: string): GenerativeModel => {
-    const cached = embeddingModelCache.get(modelName);
-    if (cached) return cached;
-
-    const model = genAI.getGenerativeModel({ model: modelName });
-    embeddingModelCache.set(modelName, model);
-    return model;
-};
-
-const generationModelCandidates = [
-    "gemini-2.0-flash",
-    "gemini-flash-latest",
-    "gemini-1.5-flash",
-    "gemini-pro-latest",
-].filter(Boolean) as string[];
-
 const extractIntelligence = async (text: string): Promise<IntelligenceObject> => {
-    let lastError: unknown;
+    const prompt = `
+        Analyze the following NBA news snippet and return a JSON object with:
+        - player_name: (string|null) Primary player mentioned.
+        - sentiment: (POSITIVE|NEGATIVE|NEUTRAL)
+        - category: (Injury|Trade|Lineup|Performance|Other|General)
+        - impact_backup: (string|null) The name of the teammate who gains fantasy value due to this news.
+        - is_injury_report: (boolean) Is this primarily an injury update?
+        - injury_status: (string|null) OFS, GTD, OUT, Day-to-Day, or Questionable.
+        - expected_return_date: (string|null) ISO format if mentioned.
+        - impacted_player_ids: (string[]) List of player names affected.
 
-    for (const modelName of generationModelCandidates) {
-        try {
-            console.log(`[News Service] Attempting intelligence extraction with: ${modelName}`);
-            const model = genAI.getGenerativeModel({ model: modelName });
+        Snippet: "${text}"
+    `;
 
-            const prompt = `
-                Analyze the following NBA news snippet and return a JSON object with:
-                - player_name: (string|null) Primary player mentioned.
-                - sentiment: (POSITIVE|NEGATIVE|NEUTRAL)
-                - category: (Injury|Trade|Lineup|Performance|Other)
-                - impact_backup: (string|null) The name of the teammate who gains fantasy value due to this news.
-                - is_injury_report: (boolean) Is this primarily an injury update?
-                - injury_status: (string|null) OFS, GTD, OUT, Day-to-Day, or Questionable.
-                - expected_return_date: (string|null) ISO format if mentioned.
-                - impacted_player_ids: (string[]) List of player names affected.
-
-                Snippet: "${text}"
-            `;
-
-            const result = await model.generateContent({
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: "application/json" }
-            });
-
-            const intelligence = JSON.parse(result.response.text());
-            return {
-                ...intelligence,
-                trust_level: 3 // Default trust level, overridden by feed
-            };
-        } catch (error: any) {
-            lastError = error;
-            const status = error.status || error.statusCode || 0;
-            if (status === 404) {
-                console.warn(`[News Service] Generation model ${modelName} not available. Trying next...`);
-                continue;
-            }
-            break;
-        }
+    try {
+        const { extractIntelligence: aiExtractIntelligence } = await import('./ai.service');
+        const intelligence = await aiExtractIntelligence(prompt);
+        return {
+            ...intelligence,
+            trust_level: 1 // Default, overridden by feed
+        };
+    } catch (error: any) {
+        console.warn("[News Service] Intelligence extraction failed:", error.message);
+        return {
+            player_name: null,
+            sentiment: 'NEUTRAL',
+            category: 'Other',
+            impact_backup: null,
+            is_injury_report: false,
+            injury_status: null,
+            expected_return_date: null,
+            impacted_player_ids: [],
+            trust_level: 1
+        };
     }
-
-    console.warn("[News Service] Intelligence extraction failed for all models:", lastError);
-    return {
-        player_name: null,
-        sentiment: 'NEUTRAL',
-        category: 'Other',
-        impact_backup: null,
-        is_injury_report: false,
-        injury_status: null,
-        expected_return_date: null,
-        impacted_player_ids: [],
-        trust_level: 1
-    };
 };
 
 const getEmbedding = async (text: string) => {
-    if (!process.env.GOOGLE_API_KEY) {
-        throw new Error("GOOGLE_API_KEY is not configured for embeddings");
-    }
-
-    try {
-        let lastError: unknown;
-        console.log(`[News Service] Embedding candidates: ${embeddingModelCandidates.join(', ')}`);
-
-        for (const modelName of embeddingModelCandidates) {
-            try {
-                console.log(`[News Service] Attempting embedding with model: ${modelName}`);
-                const model = getEmbeddingModel(modelName);
-                const result = await model.embedContent(text);
-
-                if (result.embedding?.values) {
-                    console.log(`[News Service] Embedding success with ${modelName}`);
-                    return result.embedding.values;
-                }
-                throw new Error(`Empty embedding result from ${modelName}`);
-            } catch (error: any) {
-                lastError = error;
-                console.log(`[News Service] Error from ${modelName}:`, {
-                    status: error.status,
-                    message: error.message
-                });
-
-                const status = error.status || error.statusCode || 0;
-                const message = error.message || "";
-
-                const isNotFound = status === 404 ||
-                    message.includes("404") ||
-                    message.toLowerCase().includes("not found") ||
-                    message.toLowerCase().includes("unsupported");
-
-                if (isNotFound) {
-                    console.warn(`[News Service] Model ${modelName} not available (404/Not Found). Trying next...`);
-                    continue;
-                }
-
-                console.error(`[News Service] Critical error with model ${modelName}:`, error);
-                throw error;
-            }
-        }
-
-        console.error("[News Service] All embedding models failed:", lastError);
-        throw lastError;
-    } catch (error) {
-        throw error;
-    }
+    const { getEmbedding: aiGetEmbedding } = await import('./ai.service');
+    return aiGetEmbedding(text);
 };
 
-const NBA_KEYWORDS = ['NBA', 'Basketball', 'Lakers', 'Warriors', 'Celtics', 'Knicks', 'Bucks', 'Suns', 'Mavs', 'Grizzlies', 'Sixers', '76ers', 'Nets', 'Heat', 'Bulls', 'Raptors', 'Nuggets', 'Clippers', 'Timberwolves', 'Wolves', 'Thunder', 'Kings', 'Pelicans', 'Hawks', 'Cavaliers', 'Cavs', 'Magic', 'Pacers', 'Pistons', 'Hornets', 'Spurs', 'Blazers', 'Jazz', 'Rockets', 'Wizards', 'All-Star', 'Playoffs', 'Draft'];
+const cleanContent = (text: string): string => {
+    if (!text) return text;
+    return text
+        .replace(/Visit RotoWire\.com for more [^.]+?\./gi, '')
+        .replace(/For more fantasy basketball [^.]+?\./gi, '')
+        .replace(/RotoWire\.com/gi, 'RotoWire')
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
+const NBA_KEYWORDS = [
+    'NBA', 'Basketball', 'Lakers', 'Warriors', 'Celtics', 'Knicks', 'Bucks', 'Suns', 'Mavs', 'Grizzlies', 'Sixers', '76ers', 'Nets', 'Heat', 'Bulls', 'Raptors', 'Nuggets', 'Clippers', 'Timberwolves', 'Wolves', 'Thunder', 'Kings', 'Pelicans', 'Hawks', 'Cavaliers', 'Cavs', 'Magic', 'Pacers', 'Pistons', 'Hornets', 'Spurs', 'Blazers', 'Jazz', 'Rockets', 'Wizards', 'All-Star', 'Playoffs', 'Draft',
+    // Adding top players and common basketball terms for better fallback matching
+    'Jokic', 'Embiid', 'Antetokounmpo', 'Giannis', 'Doncic', 'Curry', 'LeBron', 'Durant', 'Tatum', 'Gilgeous-Alexander', 'SGA', 'Wembanyama', 'Wemby', 'Haliburton', 'Edwards', 'Brunson', 'Sabonis', 'Fox', 'Adebayo', 'Banchero',
+    'Triple-double', 'Double-double', 'Free agent', 'Trade deadline', 'Injury report', 'GTD', 'Out indefinitely', 'Hardship exception', 'Two-way contract'
+];
 
 // --- Mapping Utilities ---
 function mapEspnArticleToRssItem(article: any) {
@@ -204,25 +128,23 @@ async function processItem(item: any, source: string, watchlist: string[], activ
         console.log(`[News Service] Processing: ${item.title}`);
 
         // 3. Generate Intelligence & Embedding
-        const contentText = item.contentSnippet || item.title;
+        const contentText = cleanContent(item.contentSnippet || item.title || "");
         const [intelligence, embedding] = await Promise.all([
             extractIntelligence(contentText),
             getEmbedding(`${item.title} ${contentText}`)
         ]);
 
         // 4. Gatekeeper
-        if (intelligence.category === 'Other' && !isNBA) {
-            console.log(`[News Service] AI Rejected "Other" category: ${item.title}`);
+        if (intelligence.trust_level < (FEEDS.find(f => f.source === source)?.trust_level || 1)) {
             return false;
         }
 
-        // 5. Insert
-        const feed = FEEDS.find(f => f.source === source);
+        // 5. Store
         const { error } = await supabase.from('news_items').insert({
             title: item.title,
             url: item.link,
-            content: item.content || item.contentSnippet,
-            summary: item.contentSnippet,
+            content: cleanContent(item.content || item.contentSnippet || ""),
+            summary: cleanContent(item.contentSnippet || ""),
             published_at: item.isoDate || new Date().toISOString(),
             source: source,
             embedding: embedding,
@@ -234,7 +156,7 @@ async function processItem(item: any, source: string, watchlist: string[], activ
             injury_status: intelligence.injury_status,
             expected_return_date: intelligence.expected_return_date,
             impacted_player_ids: intelligence.impacted_player_ids,
-            trust_level: feed?.trust_level || intelligence.trust_level
+            trust_level: (FEEDS.find(f => f.source === source)?.trust_level || intelligence.trust_level)
         });
 
         if (error) {
@@ -265,16 +187,19 @@ export async function fetchAndIngestNews(watchlist: string[] = []) {
             // Look at slightly more items from each feed
             const itemsToProcess = parsed.items.slice(0, 40);
 
-            // Process in batches of 5 for higher throughput
-            for (let i = 0; i < itemsToProcess.length; i += 5) {
+            // Process in batches of 2 for higher stability with rate limits
+            for (let i = 0; i < itemsToProcess.length; i += 2) {
                 if (importedCount >= MAX_ITEMS_PER_SYNC) break;
 
-                const batch = itemsToProcess.slice(i, i + 5);
+                const batch = itemsToProcess.slice(i, i + 2);
                 const results = await Promise.all(
                     batch.map(item => processItem(item, feed.source, watchlist, activeKeywords))
                 );
 
                 importedCount += results.filter(Boolean).length;
+
+                // Increased sleep between batches for better Free Tier compliance
+                if (batch.length > 0) await sleep(1000);
             }
 
         } catch (err) {
@@ -308,9 +233,9 @@ export async function backfillNews(watchlist: string[] = [], pages: number = 3) 
 
             console.log(`[News Service] Page ${page} contains ${articles.length} potential items`);
 
-            // Process in batches to avoid overwhelming LLM/Embeddings
-            for (let i = 0; i < articles.length; i += 5) {
-                const batch = articles.slice(i, i + 5);
+            // Process in batches of 2
+            for (let i = 0; i < articles.length; i += 2) {
+                const batch = articles.slice(i, i + 2);
                 const results = await Promise.all(
                     batch.map((article: any) => {
                         const item = mapEspnArticleToRssItem(article);
@@ -318,6 +243,7 @@ export async function backfillNews(watchlist: string[] = [], pages: number = 3) 
                     })
                 );
                 importedCount += results.filter(Boolean).length;
+                await sleep(1000);
             }
         } catch (err) {
             console.error(`[News Service] Error in backfill page ${page}:`, err);

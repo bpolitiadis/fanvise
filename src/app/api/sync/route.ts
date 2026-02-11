@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
         // We'll map them to a clean format
         const teams = (data.teams || []).map((t: any) => {
             const member = (data.members || []).find((m: any) => m.id === t.owners?.[0]);
+            const isUserOwned = swid ? t.owners?.includes(swid) : false;
             return {
                 id: String(t.id),
                 name: t.name || `${t.location} ${t.nickname}`,
@@ -59,7 +60,8 @@ export async function POST(req: NextRequest) {
                 wins: t.record?.overall?.wins,
                 losses: t.record?.overall?.losses,
                 ties: t.record?.overall?.ties,
-                manager: member ? `${member.firstName} ${member.lastName}` : "Unknown"
+                manager: member ? `${member.firstName} ${member.lastName}` : "Unknown",
+                is_user_owned: isUserOwned
             };
         });
 
