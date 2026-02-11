@@ -1,0 +1,73 @@
+-- Core Schema Migration
+-- Standardizes the local database schema to match the application's service expectations.
+
+-- Enable Vector Extension (if not already enabled)
+create extension if not exists vector;
+
+-- LEAGUES: Stores static league settings/metadata
+create table if not exists public.leagues (
+    league_id text not null primary key, -- ESPN League ID
+    season_id text not null, -- e.g., '2025'
+    name text,
+    scoring_settings jsonb not null default '{}'::jsonb,
+    roster_settings jsonb not null default '{}'::jsonb,
+    teams jsonb not null default '[]'::jsonb,
+    draft_detail jsonb not null default '{}'::jsonb,
+    positional_ratings jsonb not null default '{}'::jsonb,
+    live_scoring jsonb not null default '{}'::jsonb,
+    last_updated_at timestamptz default now()
+);
+
+-- PROFILES: Extends auth.users
+create table if not exists public.profiles (
+  id uuid references auth.users not null primary key,
+  username text unique,
+  full_name text,
+  avatar_url text,
+  updated_at timestamptz default now()
+);
+
+-- USER_LEAGUES: Maps a user to a specific team in a league
+create table if not exists public.user_leagues (
+    id uuid default gen_random_uuid() primary key,
+    user_id uuid references public.profiles(id) on delete cascade not null,
+    league_id text references public.leagues(league_id) on delete cascade not null,
+    team_id text not null, -- The user's specific team ID in that league
+    is_active boolean default false, -- Context switch toggle
+    
+    unique(user_id, league_id)
+);
+
+-- LEAGUE_TRANSACTIONS: Stores transaction history
+create table if not exists public.league_transactions (
+    id uuid primary key default gen_random_uuid(),
+    league_id text references public.leagues(league_id) on delete cascade not null,
+    espn_transaction_id text unique not null,
+    type text,
+    description text,
+    published_at timestamptz not null,
+    created_at timestamptz default now()
+);
+
+-- Enable RLS
+alter table public.leagues enable row level security;
+alter table public.profiles enable row level security;
+alter table public.user_leagues enable row level security;
+alter table public.league_transactions enable row level security;
+alter table public.news_items enable row level security;
+
+-- RLS POLICIES
+create policy "Leagues are viewable by everyone" 
+on public.leagues for select using (true);
+
+create policy "Users can manage own profile" 
+on public.profiles for all to authenticated using (auth.uid() = id);
+
+create policy "Users can manage own league mappings" 
+on public.user_leagues for all using (true); -- Relaxed for local dev
+
+create policy "Transactions are viewable by everyone" 
+on public.league_transactions for select using (true);
+
+create policy "News is viewable by everyone" 
+on public.news_items for select using (true);

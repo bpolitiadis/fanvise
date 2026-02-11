@@ -14,6 +14,11 @@ create table if not exists news_items (
   sentiment text,
   category text,
   impact_backup text,
+  is_injury_report boolean default false,
+  injury_status text,
+  expected_return_date text,
+  impacted_player_ids text[] default '{}',
+  trust_level int default 3,
   embedding vector(768),
   created_at timestamptz default now()
 );
@@ -37,6 +42,11 @@ returns table (
   sentiment text,
   category text,
   impact_backup text,
+  is_injury_report boolean,
+  injury_status text,
+  expected_return_date text,
+  impacted_player_ids text[],
+  trust_level int,
   similarity float
 )
 language plpgsql
@@ -55,6 +65,11 @@ begin
     news_items.sentiment,
     news_items.category,
     news_items.impact_backup,
+    news_items.is_injury_report,
+    news_items.injury_status,
+    news_items.expected_return_date,
+    news_items.impacted_player_ids,
+    news_items.trust_level,
     1 - (news_items.embedding <=> query_embedding) as similarity
   from news_items
   where 1 - (news_items.embedding <=> query_embedding) > match_threshold
