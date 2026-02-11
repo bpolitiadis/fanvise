@@ -66,8 +66,6 @@
 
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-success: hsl(var(--success));
-  --color-success-foreground: hsl(var(--success-foreground));
 
   /* 
    * FOUL RED (#ef4444)
@@ -146,20 +144,11 @@
     --destructive: 0 84.2% 60.2%;
     /* #ef4444 - Foul Red */
     --destructive-foreground: 210 40% 98%;
-    --success: 160 84% 39%;
-    /* #10b981 - Mint */
-    --success-foreground: 0 0% 100%;
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 175 84% 32%;
     /* Focus ring uses Main Brand Teal */
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
 
     --radius: 0.5rem;
   }
@@ -190,18 +179,10 @@
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --success: 160 84% 39%;
-    --success-foreground: 210 40% 98%;
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 175 84% 32%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
   }
 }
 
