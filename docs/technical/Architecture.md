@@ -1,33 +1,31 @@
 # System Architecture
 
-FanVise is a modern, AI-native fantasy sports intelligence platform. For the Proof of Concept (PoC) phase, the application is built as a unified Next.js solution to maximize development speed and minimize infrastructure complexity.
+FanVise is an AI-native fantasy sports intelligence platform designed as a "Savant" layer on top of existing fantasy ecosystem. The application is built as a unified, standalone Next.js solution that integrates data ingestion, AI orchestration, and RAG pipelines into a single high-performance deployment.
 
 ## High-Level Overview
 
-The system follows a "Savant" model: it acts as a strategic layer on top of existing fantasy sports platforms (starting with ESPN Fantasy Basketball).
+The system acts as a strategic co-manager for ESPN Fantasy Basketball. It aggregates structured data (league rosters, scoring) and unstructured intelligence (news, injury reports) to provide contextually grounded strategic advice.
 
 ```mermaid
 graph TD
-    User((User)) -->|Interact| WebUI[Next.js Web App]
+    User((User)) -->|Iteract| WebUI[Next.js App Router]
     
-    subgraph "Application Layer (Next.js)"
-        WebUI --> Server[Next.js Server / API Routes]
-        Server --> Orchestrator[AI Orchestrator]
+    subgraph "Next.js Application (Vercel/Node.js)"
+        WebUI --> API[API Routes / Server Actions]
+        API --> Orchestrator[AI Service]
+        API --> LeagueSvc[League/Team Context Service]
         Orchestrator --> RAG[RAG Pipeline]
     end
     
-    subgraph "Intelligence Layer"
-        Orchestrator --> Gemini[Google Vertex AI / Gemini 2.0]
+    subgraph "Intelligence Providers"
+        Orchestrator --> Gemini[Google Gemini 2.0 Flash]
+        Orchestrator -.-> Ollama[Local: DeepSeek / Llama]
+    end
+    
+    subgraph "Data & Persistence"
         RAG --> SupabaseVector[Supabase pgvector]
-    end
-    
-    subgraph "External Data"
-        Server --> ESPN[ESPN Fantasy API]
-        RAG --> News[RSS/News Feeds]
-    end
-    
-    subgraph "Persistence"
-        Server --> SupabaseDB[Supabase PostgreSQL]
+        LeagueSvc --> SupabaseDB[Supabase Postgres]
+        API --> ESPN[ESPN Private API]
     end
 ```
 

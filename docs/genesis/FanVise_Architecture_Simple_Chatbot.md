@@ -1,7 +1,8 @@
 # FanVise Architecture: Simple Chatbot (Consolidated)
 
-> [!TIP]
-> This document represents the **current active architecture** for the FanVise PoC.
+> [!WARNING]
+> **Legacy Architecture Document**
+> This document represents the initial consolidated architecture. For the most up-to-date technical documentation, please refer to the [Technical Documentation Directory](../technical/Architecture.md).
 
 
 

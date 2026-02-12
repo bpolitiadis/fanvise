@@ -1,37 +1,25 @@
 # Database Schema & Data Strategy
 
-FanVise uses Supabase (PostgreSQL) as its primary data store. The schema is designed to support the "Perspective Engine" and RAG-based intelligence.
+FanVise uses Supabase (PostgreSQL) as its primary data store. The schema is optimized for the "Perspective Engine" and vector-based retrieval.
 
 ## Core Schema
 
 ### Leagues & Teams
-- **`leagues`**: Stores ESPN league metadata, including `scoring_settings` and `roster_slots` (stored as JSONB for flexibility across different league formats).
-- **`teams`**: Maps to ESPN teams. Includes a flag `is_user_owned` to identify primary perspective.
+- **`leagues`**: Central repository for ESPN league metadata, including `scoring_settings`, `roster_settings`, and `draft_detail` (stored as JSONB).
 - **`user_leagues`**: Junction table linking authenticated users to their specific teams and leagues.
 
-### Players & Stats
-- **`players`**: Canonical player data (ESPN IDs, names, positions).
-- **`roster_slots`**: Tracks which players are on which teams for a given `as_of_date`.
-
 ### Intelligence Layer (RAG)
-- **`news_intelligence`**: Stores scraped news articles.
-- **`embeddings`**: (Managed via `pgvector`) Stores vector representations of news content for semantic search.
+- **`news_items`**: Stores scraped news articles and structured intelligence.
+- **`embedding`**: (Column in `news_items` using `vector` type) Stores the vector representation (1536 or 768 dims depending on provider) of the news title and content for semantic search.
 
 ## Perspective Engine Relational Logic
 
-The "Perspective Engine" works by dynamically injecting context into the application based on the `activeTeamId`. 
-
-```mermaid
-erDiagram
-    LEAGUES ||--o{ TEAMS : contains
-    TEAMS ||--o{ ROSTER_SLOTS : has
-    PLAYERS ||--o{ ROSTER_SLOTS : occupies
-    USER_LEAGUES ||--|| TEAMS : represents
-```
+The "Perspective Engine" dynamically injects context into the application based on the `activeTeamId`. It allows the system to analyze the league from the viewpoint of any specific team.
 
 ## Data Freshness & Sync
 
-The system uses a snapshot-based synchronization strategy:
-1. **Scraping**: Fetches raw JSON from ESPN API.
-2. **Normalization**: Processes raw data into the relational schema.
-3. **Consistency**: `last_sync` timestamps verify that the AI is not providing advice based on stale data.
+The system uses an orchestrated sync strategy:
+1. **RSS Ingestion**: Periodically fetches raw news from sources like ESPN, Rotowire, and CBS Sports.
+2. **AI-Driven Processing**: Each news item is processed by an LLM to extract structured metadata (Sentiment, Player, Category).
+3. **Vector Encoding**: Content is converted to embeddings and stored in the `news_items` table.
+4. **RPC Matchmaking**: The `match_news_documents` Postgres function performs cosine similarity search between user queries and stored news.
