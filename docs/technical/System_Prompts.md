@@ -14,7 +14,7 @@ FanVise uses a **Centralized Prompt Engine** located at `/prompts`. This archite
 ├── types.ts                      # Shared types & Zod schemas
 ├── index.test.ts                 # Unit tests
 └── agents/
-    └── consigliere.ts            # Strategic Consigliere prompt templates
+    └── orchestrator.ts           # FanVise Strategist prompt templates
 
 /src/services                     # Business logic layer
 ├── ai.service.ts                 # Gemini/Ollama API wrapper
@@ -28,14 +28,14 @@ FanVise uses a **Centralized Prompt Engine** located at `/prompts`. This archite
 2. **`buildIntelligenceSnapshot(leagueId, teamId)`** - Aggregates all context data
 3. **`contextFromSnapshot(snapshot, language, news)`** - Converts snapshot to prompt context
 
-## The "Savant Co-Owner" Persona
+## The "Data-Freak Friend" Persona (FanVise Strategist)
 
-The AI acts as a "strategic consigliere"—knowledgeable, authoritative, and deeply integrated into basketball culture. It avoids "robot speak" in favor of supportive, expert-level communication.
+The AI acts as a "strategic partner"—a data-obsessed friend who lives for stats and doesn't mind a bit of competitive trash talk. It avoids "robot speak" in favor of high-energy, informal, and expert-level communication typical of a fantasy basketball group chat.
 
 ### Persona Instructions:
-- **Tone**: High-tech, supportive, knowledgeable, cultured.
-- **Perspective**: Always analyze from the user's active team viewpoint unless asked otherwise.
-- **Data Reliance**: Prioritize the injected context (Scoring Rules, Matchup Scores) over general knowledge.
+- **Tone**: Informal, high-energy, competitive, trash-talking.
+- **Perspective**: Always analyze from the user's active team viewpoint, looking for "The Knife" move to win the week.
+- **Data Reliance**: Prioritize the injected context (Scoring Rules, Matchup Scores) over general knowledge. Trash talk must be rooted in provided data.
 
 ## Prompt Context (PromptContext Interface)
 
@@ -57,7 +57,7 @@ interface PromptContext {
 
 ### Context Blocks
 
-1. **Identity Block**: "You are FanVise, a fantasy sports expert and strategic consigliere."
+1. **Identity Block**: "You are FanVise, a data-obsessed NBA fanatic and the user's trash-talking, stat-crunching best friend."
 2. **Perspective Block**: Team name, manager, ownership status, record
 3. **League Block**: Scoring settings, roster configuration
 4. **Matchup Block**: Current scores, opponent info, differential
@@ -69,6 +69,11 @@ interface PromptContext {
 - "If matchup in progress, reference current scores."
 - "Use provided news context to inform player status."
 - "If information is missing, acknowledge it based on available data."
+
+### Streaming Rules Block
+- "NEVER recommend a player already listed in 'My Roster' or 'Opponent Roster'."
+- "NEVER recommend a player listed as 'OUT' or 'Injured'."
+- "If no suitable players, state: 'No validated streaming options available at this time.'"
 
 ## Localization (Babelfish Protocol)
 
@@ -82,7 +87,7 @@ The language is selected via the `language` field in `PromptContext`:
 ```typescript
 import { getSystemPrompt } from '@/prompts';
 
-const prompt = getSystemPrompt('consigliere', {
+const prompt = getSystemPrompt('orchestrator', {
   language: 'el', // Greek
   leagueName: 'Office Champions',
   // ... rest of context
@@ -106,7 +111,7 @@ import { generateStreamingResponse } from '@/services/ai.service';
 const snapshot = await buildIntelligenceSnapshot(leagueId, teamId);
 
 // Generate prompt
-const systemInstruction = getSystemPrompt('consigliere', 
+const systemInstruction = getSystemPrompt('orchestrator', 
   contextFromSnapshot(snapshot, userLanguage, newsContext)
 );
 
@@ -138,7 +143,7 @@ To add a new agent persona:
 
 3. Update the `AgentName` type in `/prompts/types.ts`:
    ```typescript
-   export type AgentName = 'consigliere' | 'strategist';
+   export type AgentName = 'orchestrator' | 'strategist';
    ```
 
 ## Testing

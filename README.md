@@ -2,7 +2,7 @@
 
 **The Intelligent Edge for Fantasy Basketball.**
 
-FanVise is a strategic intelligence platform for ESPN Fantasy Basketball (H2H Points). It acts as a **Strategic Consigliere**, bridging the gap between raw league data and winning decisions by combining private league context with real-time NBA intelligence.
+FanVise is a strategic intelligence platform for ESPN Fantasy Basketball (H2H Points). It acts as a **FanVise Strategist**—your data-obsessed, trash-talking friend who bridges the gap between raw league data and winning decisions by combining private league context with real-time NBA intelligence.
 
 ## 🧠 Dual-Environment AI Architecture
 
@@ -26,7 +26,7 @@ We maintain comprehensive documentation for developers and contributors:
 
 ## Key Features
 
-*   **🎙️ Strategic Consigliere**: An authoritative AI persona that provides data-grounded advice.
+*   **🎙️ FanVise Strategist**: A high-energy, data-obsessed AI persona that provides data-grounded advice with a competitive edge.
 *   **📡 Real-Time Intelligence Feed**: Aggregated news from ESPN, CBS, and Rotowire.
 *   **📊 Dynamic Dashboard**: High-density view of league standings and rosters.
 *   **🔄 Perspective Engine**: Simulate any manager's view to find their weaknesses.

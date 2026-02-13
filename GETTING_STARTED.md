@@ -128,3 +128,10 @@ ollama serve
 *   **Supabase Connection Issues**: Ensure Docker is running. Try `supabase stop` followed by `supabase start` if issues persist.
 *   **ESPN Login Failed**: Your `ESPN_S2` and `SWID` cookies expire periodically (approx. every 14 days or on logout). You may need to refresh them from your browser cookies on espn.com.
 *   **Ollama Not Responding**: Ensure `OLLAMA_URL` is reachable and CORS is configured if running across different networks (default localhost is usually fine).
+
+## AI Persona & Grounding
+
+The FanVise Strategist is designed to be a **Data-Freak Friend**. This means:
+- **Strict Truth Anchoring**: The AI is instructed to ignore pre-trained knowledge and rely solely on the provided league snapshot and news items.
+- **Competitive Edge**: Expect a bit of trash talk, but only when it's backed by the numbers.
+- **Strategic Focus**: The AI prioritizes "The Knife"—the single most impactful move you can make to win your matchup each week.

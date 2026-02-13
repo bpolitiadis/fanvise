@@ -12,12 +12,12 @@ The central gateway for all model interactions. It provides a provider-agnostic 
 ## Prompt Engine (`prompts/index.ts`)
 
 A sophisticated layer that builds high-fidelity, context-rich system instructions. 
-- **The Consigliere Persona**: A specialized agent persona defined in `prompts/agents/consigliere.ts`. It enforces **Strict Truth Anchoring**, requiring the AI to only use provided news and roster data.
+- **The Orchestrator Persona**: A specialized agent persona defined in `prompts/agents/orchestrator.ts`. It enforces **Strict Truth Anchoring**, requiring the AI to only use provided news and roster data while maintaining a competitive, informal tone.
 - **Context Injection**: Uses `Snapshot` objects from the `LeagueService` to build a complete view of league rules, team rosters, and active matchups before sending the query to the LLM.
 
 ## Intelligence Service (`src/services/intelligence.service.ts`)
 
-The **Central Brain** of the application. It orchestrates the entire "Strategic Consigliere" workflow by:
+The **Central Brain** of the application. It orchestrates the entire "FanVise Strategist" workflow by:
 1.  **RAG Retrieval**: Calling `NewsService` to fetch relevant news and injury reports.
 2.  **Context Building**: Calling `LeagueService` to build a snapshot of the user's specific fantasy environment.
 3.  **Prompt Engineering**: Using the `Prompt Engine` to synthesize data into a strict system instruction.
