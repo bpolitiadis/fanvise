@@ -12,9 +12,10 @@ graph TD
     
     subgraph "Next.js Application (Vercel/Node.js)"
         WebUI --> API[API Routes / Server Actions]
-        API --> Orchestrator[AI Service]
-        API --> LeagueSvc[League/Team Context Service]
-        Orchestrator --> RAG[RAG Pipeline]
+        API --> IntelligenceSvc[Intelligence Service]
+        IntelligenceSvc --> Orchestrator[AI Service]
+        IntelligenceSvc --> LeagueSvc[League/Team Context Service]
+        IntelligenceSvc --> RAG[RAG Pipeline/News Service]
     end
     
     subgraph "Intelligence Providers"

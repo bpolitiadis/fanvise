@@ -95,9 +95,12 @@ Technical NBA terminology (e.g., "Box Score", "Waiver Wire", "Trade", "Drop") re
 ## Usage Example
 
 ```typescript
-// In src/app/api/chat/route.ts
+// In src/services/intelligence.service.ts
 import { getSystemPrompt, contextFromSnapshot } from '@/prompts';
 import { buildIntelligenceSnapshot } from '@/services/league.service';
+import { generateStreamingResponse } from '@/services/ai.service';
+
+// ... inside generateStrategicResponse ...
 
 // Build comprehensive context
 const snapshot = await buildIntelligenceSnapshot(leagueId, teamId);
@@ -110,7 +113,7 @@ const systemInstruction = getSystemPrompt('consigliere',
 // Use with AI service
 const response = await generateStreamingResponse(
   history, 
-  message, 
+  currentMessage, 
   { systemInstruction }
 );
 ```

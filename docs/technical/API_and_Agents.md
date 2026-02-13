@@ -15,15 +15,22 @@ A sophisticated layer that builds high-fidelity, context-rich system instruction
 - **The Consigliere Persona**: A specialized agent persona defined in `prompts/agents/consigliere.ts`. It enforces **Strict Truth Anchoring**, requiring the AI to only use provided news and roster data.
 - **Context Injection**: Uses `Snapshot` objects from the `LeagueService` to build a complete view of league rules, team rosters, and active matchups before sending the query to the LLM.
 
+## Intelligence Service (`src/services/intelligence.service.ts`)
+
+The **Central Brain** of the application. It orchestrates the entire "Strategic Consigliere" workflow by:
+1.  **RAG Retrieval**: Calling `NewsService` to fetch relevant news and injury reports.
+2.  **Context Building**: Calling `LeagueService` to build a snapshot of the user's specific fantasy environment.
+3.  **Prompt Engineering**: Using the `Prompt Engine` to synthesize data into a strict system instruction.
+4.  **Generative Execution**: Delegating the final prompt to the `AI Service` for streaming generation.
+
 ## Chat API (`src/app/api/chat/route.ts`)
 
-The primary streaming endpoint. It performs several orchestrated steps per request:
-1. **RAG Retrieval**: Calls `NewsService` to perform a vector search for latest injury reports and intelligence.
-2. **Perspective Loading**: Fetches the state of the user's league and team via `LeagueService`.
-3. **Prompt Composition**: Passes the combined news, league data, and chat history through the `Prompt Engine`.
-4. **Streaming Execution**: Executes the generative call via the `AI Service` and streams response chunks to the frontend.
+A thin controller layer that receives user input and delegates execution to the `Intelligence Service`.
+-   **Responsibility**: Request validation, rate limiting, and response streaming.
+-   **Logic**: **None**. All business logic is now encapsulated in the Intelligence Service.
 
 ## Key Services
+- **Intelligence Service (`src/services/intelligence.service.ts`)**: Orchestrates RAG, context building, and prompt generation.
 - **League Service (`src/services/league.service.ts`)**: Aggregates ESPN API data and Supabase records into a unified "Intelligence Snapshot".
 - **News Service (`src/services/news.service.ts`)**: Manages the RAG pipeline, including RSS ingestion, AI intelligence extraction, and vector storage.
 - **ESPN Client (`src/lib/espn/client.ts`)**: The core connector for fetching team and league data.
