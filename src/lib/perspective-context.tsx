@@ -110,20 +110,40 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
       setActiveLeagueId(league.league_id)
 
       // 3. Set Active Team if teamId is provided
+      const teams = (league.teams as Team[]) || []
+      
       if (teamId) {
-        const teams = (league.teams as Team[]) || []
         const team = teams.find(t => String(t.id) === String(teamId))
         if (team) {
           setActiveTeam(team)
           setActiveTeamId(team.id)
         } else {
-          console.warn(`Team ${teamId} not found in league ${leagueId}`)
+          console.warn(`[Perspective] Team ${teamId} not found in league ${leagueId}. Clearing stale perspective.`)
+          localStorage.removeItem(STORAGE_KEY)
+          
+          // Try to fallback to user's own team if available in the team list
+          const userTeam = teams.find(t => t.is_user_owned)
+          if (userTeam) {
+            console.log(`[Perspective] Defaulting to user-owned team: ${userTeam.name}`)
+            setActiveTeam(userTeam)
+            setActiveTeamId(userTeam.id)
+            localStorage.setItem(STORAGE_KEY, userTeam.id)
+          } else {
+            setActiveTeam(null)
+            setActiveTeamId(null)
+          }
+        }
+      } else {
+        // No teamId provided, try to default to user-owned team
+        const userTeam = teams.find(t => t.is_user_owned)
+        if (userTeam) {
+          console.log(`[Perspective] Defaulting to user-owned team: ${userTeam.name}`)
+          setActiveTeam(userTeam)
+          setActiveTeamId(userTeam.id)
+        } else {
           setActiveTeam(null)
           setActiveTeamId(null)
         }
-      } else {
-        setActiveTeam(null)
-        setActiveTeamId(null)
       }
 
     } catch (err) {
