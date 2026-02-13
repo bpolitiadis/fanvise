@@ -52,6 +52,7 @@ export class EspnClient {
 
             const text = await response.text();
             try {
+                // Return as typed response - validation handled by runtime checks in mapper or usage
                 return JSON.parse(text);
             } catch (e) {
                 console.error("Failed to parse ESPN response:", text.substring(0, 500));
@@ -87,6 +88,104 @@ export class EspnClient {
             return await response.json();
         } catch (error) {
             console.error("Failed to fetch matchups:", error);
+            throw error;
+        }
+    }
+
+    async getTransactions(limit: number = 500) {
+        // Fetch transactions and roster to allow player name resolution
+        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=mTransactions2&view=mRoster`;
+
+        console.log(`Fetching Transactions: ${url}`);
+
+        try {
+            const response = await fetch(url, {
+                headers: this.getHeaders(),
+                next: { revalidate: 0 } // Do not cache transactions to ensure freshness
+            });
+
+            if (!response.ok) {
+                throw new Error(`ESPN API Error: ${response.status} ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error("Failed to fetch transactions:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Fetches the professional team schedules (NBA schedule).
+     * This is a season-level endpoint, not specific to the league instance.
+     */
+    async getProTeamSchedules() {
+        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}?view=proTeamSchedules_wl`;
+
+        console.log(`Fetching Pro Schedule: ${url}`);
+
+        try {
+            const response = await fetch(url, {
+                headers: this.getHeaders(),
+                next: { revalidate: 86400 } // Cache for 24 hours (schedule rarely changes)
+            });
+
+            if (!response.ok) {
+                throw new Error(`ESPN API Error: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            // The data comes back in a structure similar to league settings but at season level
+            // We are interested in data.settings.proTeams
+            return data;
+        } catch (error) {
+            console.error("Failed to fetch pro schedule:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Fetches top free agents (waiver wire) for the league.
+     * Use filters to narrow down by position or status.
+     */
+    async getFreeAgents(limit: number = 50, positionId?: number) {
+        // kona_player_info is the view for searching/filtering players
+        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=kona_player_info`;
+
+        console.log(`Fetching Free Agents: ${url}`);
+
+        // Construct filters similar to espn-api python lib
+        const filterStatus = { "value": ["FREEAGENT", "WAIVERS"] };
+        const filterSlotIds = positionId ? { "value": [positionId] } : undefined;
+
+        const filters = {
+            "players": {
+                "filterStatus": filterStatus,
+                "filterSlotIds": filterSlotIds,
+                "limit": limit,
+                "sortPercOwned": { "sortPriority": 1, "sortAsc": false },
+                "sortDraftRanks": { "sortPriority": 100, "sortAsc": true, "value": "STANDARD" }
+            }
+        };
+
+        const headers = this.getHeaders();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (headers as any)['x-fantasy-filter'] = JSON.stringify(filters);
+
+        try {
+            const response = await fetch(url, {
+                headers: headers,
+                next: { revalidate: 300 } // Cache for 5 minutes
+            });
+
+            if (!response.ok) {
+                throw new Error(`ESPN API Error: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            return data.players || [];
+        } catch (error) {
+            console.error("Failed to fetch free agents:", error);
             throw error;
         }
     }
