@@ -42,14 +42,16 @@ export async function POST(req: NextRequest) {
         }
 
         let count = 0;
+        const DEFAULT_INTERACTIVE_LIMIT = 20;
+        const MAX_INTERACTIVE_LIMIT = 40;
         if (backfill) {
             console.log("[Sync API] Triggering Historical Backfill...");
             const { backfillNews } = await import("@/services/news.service");
             count = await backfillNews(watchlist, 3); // Default 3 pages
         } else {
-            // Use provided limit or default (will be 50 in service)
-            // If limit is provided, ensure it's a number
-            const ingestionLimit = typeof limit === 'number' ? limit : undefined;
+            // Keep dashboard-triggered sync quick enough for serverless request limits.
+            const parsedLimit = typeof limit === 'number' ? Math.floor(limit) : DEFAULT_INTERACTIVE_LIMIT;
+            const ingestionLimit = Math.max(1, Math.min(parsedLimit, MAX_INTERACTIVE_LIMIT));
             count = await fetchAndIngestNews(watchlist, ingestionLimit, dryRun);
         }
 

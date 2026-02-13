@@ -42,8 +42,20 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'deepseek-r1:14b';
 
 /** Ollama API endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
+const OLLAMA_BASE_URL = (() => {
+    try {
+        return new URL(OLLAMA_URL).origin;
+    } catch {
+        return 'http://localhost:11434';
+    }
+})();
+const IS_VERCEL_RUNTIME = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
+const LOCAL_AI_ENABLED = USE_LOCAL_AI && !IS_VERCEL_RUNTIME;
 
-console.log(`[AI Service] Initialization: Local AI is ${USE_LOCAL_AI ? 'ENABLED' : 'DISABLED'} (Env: ${process.env.USE_LOCAL_AI})`);
+if (USE_LOCAL_AI && IS_VERCEL_RUNTIME) {
+    console.warn('[AI Service] USE_LOCAL_AI is enabled on Vercel. Falling back to cloud provider.');
+}
+console.log(`[AI Service] Initialization: Local AI is ${LOCAL_AI_ENABLED ? 'ENABLED' : 'DISABLED'} (Env: ${process.env.USE_LOCAL_AI})`);
 
 // Initialize Gemini client
 const genAI = GOOGLE_API_KEY ? new GoogleGenerativeAI(GOOGLE_API_KEY) : null;
@@ -287,7 +299,7 @@ export async function generateStreamingResponse(
     message: string,
     options: GenerateOptions = {}
 ): Promise<StreamResult> {
-    if (USE_LOCAL_AI) {
+    if (LOCAL_AI_ENABLED) {
         console.log(`[AI Service] Routing to Ollama (${OLLAMA_MODEL})`);
         return generateOllamaStream(history, message, options);
     }
@@ -309,7 +321,7 @@ export async function generateResponse(
     message: string,
     options: GenerateOptions = {}
 ): Promise<string> {
-    if (USE_LOCAL_AI) {
+    if (LOCAL_AI_ENABLED) {
         // For Ollama, collect the stream
         const stream = await generateOllamaStream([], message, options);
         let result = '';
@@ -406,7 +418,7 @@ class OllamaIntelligenceProvider implements IntelligenceProvider {
     async extractIntelligence(prompt: string): Promise<Record<string, unknown>> {
         console.log(`[AI Service] Using local Ollama model: ${this.model}`);
 
-        const response = await fetch('http://localhost:11434/api/generate', {
+        const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -443,7 +455,7 @@ class OllamaIntelligenceProvider implements IntelligenceProvider {
  * Gets the configured intelligence provider based on environment variables.
  */
 export function getIntelligenceProvider(): IntelligenceProvider {
-    if (USE_LOCAL_AI) {
+    if (LOCAL_AI_ENABLED) {
         return new OllamaIntelligenceProvider();
     }
     return new GeminiIntelligenceProvider();
@@ -491,7 +503,7 @@ class OllamaEmbeddingProvider implements EmbeddingProvider {
     }
 
     async embedContent(text: string): Promise<number[]> {
-        const response = await fetch('http://localhost:11434/api/embeddings', {
+        const response = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -521,6 +533,10 @@ export function getEmbeddingProvider(): EmbeddingProvider {
 
     switch (providerType) {
         case 'ollama':
+            if (IS_VERCEL_RUNTIME) {
+                console.warn('[AI Service] Ollama embedding provider configured on Vercel. Falling back to Gemini embeddings.');
+                return new GeminiEmbeddingProvider();
+            }
             console.log(`[AI Service] Using Ollama Embedding Provider (${process.env.OLLAMA_EMBEDDING_MODEL || 'nomic-embed-text'})`);
             return new OllamaEmbeddingProvider();
         case 'openai':
@@ -556,7 +572,7 @@ export function getServiceStatus(): {
 } {
     const embeddingProvider = process.env.EMBEDDING_PROVIDER || 'gemini';
 
-    if (USE_LOCAL_AI) {
+    if (LOCAL_AI_ENABLED) {
         return {
             provider: 'ollama',
             model: OLLAMA_MODEL || 'unknown',

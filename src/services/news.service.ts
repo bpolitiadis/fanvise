@@ -51,6 +51,19 @@ export interface IntelligenceObject {
     trust_level: number;
 }
 
+const normalizeExpectedReturnDate = (value: string | null): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+        return null;
+    }
+
+    return parsed.toISOString();
+};
+
 // RSS Feeds
 // RSS Feeds with Trust Ranking
 const FEEDS = [
@@ -284,7 +297,7 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
             impact_backup: intelligence.impact_backup,
             is_injury_report: intelligence.is_injury_report,
             injury_status: intelligence.injury_status,
-            expected_return_date: intelligence.expected_return_date,
+            expected_return_date: normalizeExpectedReturnDate(intelligence.expected_return_date),
             impacted_player_ids: intelligence.impacted_player_ids,
             trust_level: (FEEDS.find(f => f.source === source)?.trust_level || intelligence.trust_level),
             guid: item.guid || null
@@ -305,7 +318,7 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
     }
 }
 
-export async function fetchAndIngestNews(watchlist: string[] = [], limit: number = 200, dryRun: boolean = false) {
+export async function fetchAndIngestNews(watchlist: string[] = [], limit: number = 50, dryRun: boolean = false) {
     let importedCount = 0;
     const MAX_ITEMS_PER_SYNC = limit; // Increased throughput for user request
     const activeKeywords = [...NBA_KEYWORDS, ...watchlist];
