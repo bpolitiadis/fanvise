@@ -15,6 +15,7 @@ import {
   Settings,
   HelpCircle,
   Check,
+  Trash2,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -41,6 +42,12 @@ interface SidebarProps {
   onToggleCollapse?: () => void;
 }
 
+const toCompactConversationTitle = (title: string) => {
+  const cleaned = title.trim().replace(/\s+/g, " ");
+  if (cleaned.length <= 34) return cleaned;
+  return `${cleaned.slice(0, 34)}...`;
+};
+
 export function Sidebar({
   className,
   onNavigate,
@@ -53,6 +60,7 @@ export function Sidebar({
     activeConversationId,
     setActiveConversation,
     setConversationLanguage,
+    deleteConversation,
     createConversation,
   } = useChatHistory();
   const pathname = usePathname();
@@ -196,7 +204,7 @@ export function Sidebar({
         </DropdownMenu>
       </div>
 
-      <div className="flex-1 px-3 py-4 space-y-6">
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
         {/* Navigation Section */}
         <div className="space-y-1">
           {!collapsed && (
@@ -256,23 +264,41 @@ export function Sidebar({
               <div key={groupKey} className="space-y-1">
                 <p className="px-2 pt-2 text-[11px] uppercase tracking-wider text-muted-foreground">{title}</p>
                 {list.map((conversation) => (
-                  <Button
-                    key={conversation.id}
-                    variant="ghost"
-                    onClick={() => {
-                      setActiveConversation(conversation.id);
-                      onNavigate?.();
-                    }}
-                    className={cn(
-                      "h-9 w-full justify-start truncate text-sm font-normal focus-visible:ring-2 focus-visible:ring-ring",
-                      activeConversationId === conversation.id
-                        ? "bg-primary/10 text-primary hover:bg-primary/15"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <MessageSquare className="mr-3 h-4 w-4 opacity-70" />
-                    {conversation.title}
-                  </Button>
+                  <div key={conversation.id} className="group flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setActiveConversation(conversation.id);
+                        onNavigate?.();
+                      }}
+                      className={cn(
+                        "h-9 min-w-0 flex-1 justify-start text-sm font-normal focus-visible:ring-2 focus-visible:ring-ring",
+                        activeConversationId === conversation.id
+                          ? "bg-primary/10 text-primary hover:bg-primary/15"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <MessageSquare className="mr-2 h-4 w-4 shrink-0 opacity-70" />
+                      <span className="truncate">{toCompactConversationTitle(conversation.title)}</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const shouldDelete = window.confirm("Delete this conversation history?");
+                        if (!shouldDelete) return;
+                        deleteConversation(conversation.id);
+                      }}
+                      className="h-8 w-8 shrink-0 rounded-md border border-border/60 text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`Delete conversation: ${conversation.title}`}
+                      title="Delete conversation"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 ))}
               </div>
             );

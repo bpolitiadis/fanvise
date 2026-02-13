@@ -11,7 +11,6 @@ import {
   BarChart3,
   Zap,
   BrainCircuit,
-  TrendingUp,
   Search,
   Activity,
   ChevronDown,
@@ -30,6 +29,8 @@ interface ToastState {
   title: string;
   description?: string;
 }
+
+const STREAM_HEARTBEAT_TOKEN = "[[FV_STREAM_READY]]";
 
 export function ChatInterface() {
   const [input, setInput] = useState("");
@@ -162,7 +163,9 @@ export function ChatInterface() {
       const { done, value } = await reader.read();
       if (done) break;
       const text = new TextDecoder().decode(value);
-      assistantMessage += text;
+      const sanitizedText = text.replaceAll(STREAM_HEARTBEAT_TOKEN, "");
+      if (!sanitizedText) continue;
+      assistantMessage += sanitizedText;
       persistMessages(conversationId, [
         ...requestMessages,
         { ...assistantDraft, content: assistantMessage },

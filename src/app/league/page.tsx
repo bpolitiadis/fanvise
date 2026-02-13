@@ -90,7 +90,7 @@ export default function LeaguePage() {
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 {activeScoringRules.map((rule, index: number) => (
                                     <div key={index} className="flex justify-between items-center p-3.5 bg-background/50 rounded-xl border border-border/40 shadow-sm hover:border-primary/20 transition-colors group">
-                                        <span className="font-semibold text-sm group-hover:text-primary transition-colors">{getStatName(rule.statId, rule.points)}</span>
+                                        <span className="font-semibold text-sm group-hover:text-primary transition-colors">{getStatName(rule.statId)}</span>
                                         <Badge variant={rule.points > 0 ? "default" : "destructive"} className="font-mono">
                                             {rule.points > 0 ? "+" : ""}{rule.points}
                                         </Badge>

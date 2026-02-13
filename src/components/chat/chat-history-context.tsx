@@ -11,8 +11,6 @@ import {
 } from "react";
 import type { ChatMessage, ChatLanguage } from '@/types/ai';
 export type { ChatMessage, ChatLanguage };
-import { createClient } from '@/utils/supabase/client';
-const supabase = createClient();
 
 export interface Conversation {
   id: string;
@@ -29,6 +27,7 @@ interface ChatHistoryContextValue {
   activeConversation: Conversation | null;
   setActiveConversation: (conversationId: string) => void;
   setConversationLanguage: (conversationId: string, language: ChatLanguage) => void;
+  deleteConversation: (conversationId: string) => void;
   upsertConversation: (
     conversationId: string,
     updater: (conversation: Conversation) => Conversation
@@ -150,6 +149,19 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     [upsertConversation]
   );
 
+  const deleteConversation = useCallback((conversationId: string) => {
+    setConversations((prev) => {
+      const remaining = prev.filter((conversation) => conversation.id !== conversationId);
+
+      setActiveConversationId((currentActiveId) => {
+        if (currentActiveId !== conversationId) return currentActiveId;
+        return remaining[0]?.id ?? null;
+      });
+
+      return remaining;
+    });
+  }, []);
+
   return (
     <ChatHistoryContext.Provider
       value={{
@@ -158,6 +170,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         activeConversation,
         setActiveConversation,
         setConversationLanguage,
+        deleteConversation,
         upsertConversation,
         createConversation,
       }}

@@ -26,7 +26,7 @@ export default function Home() {
 
   useEffect(() => {
     if (activeLeagueId) {
-       getLatestTransactions(activeLeagueId, 10).then(data => setTransactions(data as any));
+       getLatestTransactions(activeLeagueId, 10).then(data => setTransactions(data as TransactionItem[]));
     }
   }, [activeLeagueId]);
 
@@ -39,7 +39,7 @@ export default function Home() {
         
         await fetchAndSyncTransactions(activeLeagueId, year, sport);
         const latestTx = await getLatestTransactions(activeLeagueId, 10);
-        setTransactions(latestTx as any);
+        setTransactions(latestTx as TransactionItem[]);
 
         // Run News Sync with Roster Intelligence
         console.log("[Dashboard] Triggering News Sync...");

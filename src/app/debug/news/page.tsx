@@ -1,14 +1,24 @@
 import { getLatestNews } from "@/services/news.service";
 
+interface DebugNewsItem {
+    id: string;
+    url: string;
+    title: string;
+    source: string;
+    published_at: string;
+    summary?: string | null;
+    content?: string | null;
+}
+
 export default async function NewsDebugPage() {
-    const news = await getLatestNews(50);
+    const news = await getLatestNews(50) as DebugNewsItem[];
 
     return (
         <div className="container mx-auto p-4 py-8">
             <h1 className="text-2xl font-bold mb-6">News Ingestion Debug</h1>
             
             <div className="grid gap-4">
-                {news.map((item: any) => (
+                {news.map((item) => (
                     <div key={item.id} className="p-4 border rounded-lg shadow-sm bg-card">
                         <div className="flex justify-between items-start mb-2">
                             <h2 className="font-semibold text-lg hover:underline">
