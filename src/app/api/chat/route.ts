@@ -3,6 +3,7 @@ import { generateStrategicResponse } from "@/services/intelligence.service";
 import type { ChatMessage } from '@/types/ai';
 import type { SupportedLanguage } from "@/prompts/types";
 import { searchNews } from "@/services/news.service";
+import { authorizePerspectiveScope } from "@/utils/auth/perspective-authorization";
 
 interface RequestMessage {
     role: "user" | "assistant";
@@ -16,6 +17,8 @@ interface ChatRequestBody {
     language?: SupportedLanguage;
     evalMode?: boolean;
 }
+
+const STREAM_HEARTBEAT_TOKEN = "[[FV_STREAM_READY]]";
 
 const isRateLimitError = (error: unknown) => {
     if (!(error instanceof Error)) return false;
@@ -33,16 +36,35 @@ export async function POST(req: NextRequest) {
         const body = (await req.json()) as ChatRequestBody;
         const { messages, activeTeamId, activeLeagueId, language = 'en', evalMode = false } = body;
         const shouldIncludeDebugContext = process.env.NODE_ENV === "development" && evalMode;
+        const perspective = await authorizePerspectiveScope({ activeTeamId, activeLeagueId });
+        const safeActiveTeamId = perspective.activeTeamId;
+        const safeActiveLeagueId = perspective.activeLeagueId;
 
-        if (!activeTeamId || !activeLeagueId) {
-            console.warn(`[Chat API] Incoming request with MISSING perspective: Team: ${activeTeamId}, League: ${activeLeagueId}`);
+        if (perspective.status === "authorized") {
+            console.log(`[Chat API] Authorized perspective: Team ${safeActiveTeamId}, League ${safeActiveLeagueId}`);
+        } else if (perspective.status === "authorized_public") {
+            console.log(`[Chat API] Authorized public perspective fallback: Team ${safeActiveTeamId}, League ${safeActiveLeagueId}`);
+        } else if (perspective.status === "missing") {
+            console.warn(`[Chat API] Missing perspective: Team ${activeTeamId}, League ${activeLeagueId}`);
         } else {
-            console.log(`[Chat API] Incoming request with perspective: Team: ${activeTeamId}, League: ${activeLeagueId}`);
+            console.warn(`[Chat API] Perspective scope denied (${perspective.status}). Falling back to generic context.`);
         }
 
         // Separate history from current message to prevent duplication in AI context
         const currentMessageContent = messages[messages.length - 1].content;
         const historyMessages = messages.slice(0, -1);
+        let prefetchedNewsItems: unknown[] | undefined;
+
+        if (shouldIncludeDebugContext) {
+            try {
+                const retrievedDocs = await searchNews(currentMessageContent);
+                if (Array.isArray(retrievedDocs)) {
+                    prefetchedNewsItems = retrievedDocs;
+                }
+            } catch (debugError) {
+                console.warn("[Chat API] Failed to prefetch debug_context:", debugError);
+            }
+        }
 
         // Convert history to service format
         const history: ChatMessage[] = historyMessages.map((m) => ({
@@ -53,23 +75,18 @@ export async function POST(req: NextRequest) {
             feedback: null
         }));
 
-        // Generate streaming response using Intelligence Service
-        const streamResult = await generateStrategicResponse(
-            history,
-            currentMessageContent,
-            { activeTeamId, activeLeagueId, language }
-        );
-
         if (shouldIncludeDebugContext) {
-            let debugContext: unknown[] = [];
-            try {
-                const retrievedDocs = await searchNews(currentMessageContent);
-                if (Array.isArray(retrievedDocs)) {
-                    debugContext = retrievedDocs;
+            const debugContext: unknown[] = prefetchedNewsItems ?? [];
+            const streamResult = await generateStrategicResponse(
+                history,
+                currentMessageContent,
+                {
+                    activeTeamId: safeActiveTeamId,
+                    activeLeagueId: safeActiveLeagueId,
+                    language,
+                    prefetchedNewsItems,
                 }
-            } catch (debugError) {
-                console.warn("[Chat API] Failed to fetch debug_context:", debugError);
-            }
+            );
 
             let output = "";
             for await (const chunk of streamResult) {
@@ -87,6 +104,24 @@ export async function POST(req: NextRequest) {
         const stream = new ReadableStream({
             async start(controller) {
                 try {
+                    // Send an immediate heartbeat so clients/proxies receive bytes
+                    // even when context assembly and local model boot are slow.
+                    controller.enqueue(encoder.encode(STREAM_HEARTBEAT_TOKEN));
+
+                    // Run expensive orchestration inside the stream lifecycle so
+                    // the response can be established immediately (prevents client
+                    // fetch failures on slower local-model generations).
+                    const streamResult = await generateStrategicResponse(
+                        history,
+                        currentMessageContent,
+                        {
+                            activeTeamId: safeActiveTeamId,
+                            activeLeagueId: safeActiveLeagueId,
+                            language,
+                            prefetchedNewsItems,
+                        }
+                    );
+
                     for await (const chunk of streamResult) {
                         if (chunk) {
                             controller.enqueue(encoder.encode(chunk));
