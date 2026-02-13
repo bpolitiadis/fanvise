@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSystemPrompt, contextFromSnapshot } from "@/prompts";
+import { generateStrategicResponse, type IntelligenceOptions } from "@/services/intelligence.service";
+import type { ChatMessage } from "@/services/ai.service";
 import type { SupportedLanguage } from "@/prompts/types";
-import { generateStreamingResponse, type ChatMessage } from "@/services/ai.service";
-import { buildIntelligenceSnapshot } from "@/services/league.service";
-import { searchNews } from "@/services/news.service";
-
-interface NewsItem {
-    title?: string | null;
-    summary?: string | null;
-    content?: string | null;
-    published_at?: string | null;
-    source?: string | null;
-    player_name?: string | null;
-}
 
 interface RequestMessage {
     role: "user" | "assistant";
@@ -34,85 +23,38 @@ const isRateLimitError = (error: unknown) => {
 /**
  * Chat API Route
  * 
- * Handles streaming chat responses using the centralized Prompt Engine
- * and Intelligence Snapshot system.
+ * Handles streaming chat responses by delegating orbit to the Intelligence Service.
+ * This controller is now a thin wrapper around the core business logic.
  */
 export async function POST(req: NextRequest) {
     try {
-        const { messages, activeTeamId, activeLeagueId, language = 'en' } =
-            (await req.json()) as ChatRequestBody;
-        const lastMessage = messages[messages.length - 1];
+        const body = (await req.json()) as ChatRequestBody;
+        const { messages, activeTeamId, activeLeagueId, language = 'en' } = body;
 
-        // 1. Fetch News Context (RAG)
-        let newsContext = "";
-        try {
-            const newsItems = await searchNews(lastMessage.content);
-            if (newsItems && newsItems.length > 0) {
-                newsContext = newsItems
-                    .map((item: any) => {
-                        const typedItem = item as NewsItem;
-                        const sourceTag = typedItem.source ? ` [SOURCE: ${typedItem.source}]` : '';
-                        const playerTag = typedItem.player_name ? ` [PLAYER: ${typedItem.player_name}]` : '';
-                        return `- [${typedItem.published_at || 'Recent'}]${sourceTag}${playerTag} ${typedItem.title || "News"}: ${typedItem.summary || typedItem.content || ""}`;
-                    })
-                    .join("\n");
-            }
-        } catch (newsError) {
-            console.error("[Chat API] Failed to fetch news:", newsError);
-        }
-
-        // 2. Build Intelligence Snapshot (League/Team/Matchup Context)
-        let systemInstruction = "";
-
-        if (activeTeamId && activeLeagueId) {
-            try {
-                const snapshot = await buildIntelligenceSnapshot(activeLeagueId, activeTeamId);
-
-                // Convert snapshot to PromptContext
-                const promptContext = contextFromSnapshot(
-                    {
-                        league: {
-                            name: snapshot.league.name,
-                            scoringSettings: snapshot.league.scoringSettings,
-                            rosterSlots: snapshot.league.rosterSlots,
-                        },
-                        myTeam: snapshot.myTeam,
-                        opponent: snapshot.opponent,
-                        matchup: snapshot.matchup,
-                        schedule: snapshot.schedule,
-                    },
-                    language as SupportedLanguage,
-                    newsContext ? `Recent News & Intelligence:\n${newsContext}` : undefined
-                );
-
-                // Generate system prompt using the Prompt Engine
-                systemInstruction = getSystemPrompt('consigliere', promptContext);
-
-                console.log(`[Chat API] Context built: League[${snapshot.league.name}] Team[${snapshot.myTeam.name}] News[${newsContext.length > 0}]`);
-            } catch (snapshotError) {
-                console.error("[Chat API] Failed to build intelligence snapshot:", snapshotError);
-                // Fall back to basic prompt
-                systemInstruction = buildFallbackPrompt(newsContext, language);
-            }
+        if (!activeTeamId || !activeLeagueId) {
+            console.error(`[Chat API] ❌ MISSING CONTEXT IDS: Team: ${activeTeamId}, League: ${activeLeagueId}`);
         } else {
-            console.warn("[Chat API] No active perspective (team/league ID) provided");
-            systemInstruction = buildFallbackPrompt(newsContext, language);
+            console.log(`[Chat API] ✅ Request Context: Team: ${activeTeamId}, League: ${activeLeagueId}`);
         }
 
-        // 3. Convert history to service format
-        const history: ChatMessage[] = messages.slice(0, -1).map((m) => ({
+        // Separate history from current message to prevent duplication in AI context
+        const currentMessageContent = messages[messages.length - 1].content;
+        const historyMessages = messages.slice(0, -1);
+
+        // Convert history to service format
+        const history: ChatMessage[] = historyMessages.map((m) => ({
             role: m.role === "user" ? "user" : "model",
             content: m.content,
         }));
 
-        // 4. Generate streaming response using AI Service
-        const streamResult = await generateStreamingResponse(
+        // Generate streaming response using Intelligence Service
+        const streamResult = await generateStrategicResponse(
             history,
-            lastMessage.content,
-            { systemInstruction }
+            currentMessageContent,
+            { activeTeamId, activeLeagueId, language }
         );
 
-        // 5. Create response stream
+        // Create response stream
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
             async start(controller) {
@@ -155,26 +97,4 @@ export async function POST(req: NextRequest) {
             stack: process.env.NODE_ENV === 'development' ? errorStack : undefined
         }, { status: 500 });
     }
-}
-
-/**
- * Builds a minimal fallback prompt when Intelligence Snapshot is unavailable.
- */
-function buildFallbackPrompt(newsContext: string, language: SupportedLanguage): string {
-    const languageInstruction =
-        language === 'el'
-            ? "Respond in Greek, while keeping core basketball/fantasy terminology in English when that is clearer."
-            : "Respond in English.";
-
-    return `You are FanVise, a fantasy sports expert and strategic consigliere.
-Your goal is to provide elite, data-driven advice tailored to the user's specific context.
-
-${newsContext ? `Recent News & Intelligence:\n${newsContext}\n` : ''}
-
-INSTRUCTIONS:
-0. ${languageInstruction}
-1. Be concise, strategic, and authoritative.
-2. Use the provided news context to inform your answers about player status or performance.
-3. If specific league context is missing, acknowledge it and provide general guidance.
-4. Maintain your role as a knowledgeable fantasy sports advisor.`;
 }

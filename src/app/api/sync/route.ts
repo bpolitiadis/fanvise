@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EspnClient } from "@/lib/espn/client";
 import { upsertLeague } from "@/services/league.service";
+import { mapEspnLeagueData } from "@/lib/espn/mappers";
 
 export async function POST(req: NextRequest) {
     try {
@@ -26,44 +27,18 @@ export async function POST(req: NextRequest) {
         const client = new EspnClient(leagueId, year, sport, swid, s2);
 
         // 1. Fetch Settings
-        const data = await client.getLeagueSettings();
+        const rawData = await client.getLeagueSettings();
 
-        // 2. Parse Data
-        // ESPN API structure varies, but generally:
-        // data.settings.name
-        // data.settings.scoringSettings
-        // data.settings.rosterSettings
-
-        const settings = data.settings || {};
-        const name = settings.name || `League ${leagueId}`;
-        const scoringSettings = settings.scoringSettings || {};
-        const rosterSettings = settings.rosterSettings || {};
-
-
-
-        const draftDetail = data.draftDetail || {};
-        const positionalRatings = data.positionalRatings || {};
-        const liveScoring = data.liveScoring || {};
-
-        // Extract teams
-        // data.teams usually contains the team info
-        // data.members usually contains the manager info
-        // We'll map them to a clean format
-        const teams = (data.teams || []).map((t: any) => {
-            const member = (data.members || []).find((m: any) => m.id === t.owners?.[0]);
-            const isUserOwned = swid ? t.owners?.includes(swid) : false;
-            return {
-                id: String(t.id),
-                name: t.name || `${t.location} ${t.nickname}`,
-                abbrev: t.abbrev,
-                logo: t.logo,
-                wins: t.record?.overall?.wins,
-                losses: t.record?.overall?.losses,
-                ties: t.record?.overall?.ties,
-                manager: member ? `${member.firstName} ${member.lastName}` : "Unknown",
-                is_user_owned: isUserOwned
-            };
-        });
+        // 2. Parse Data using centralized mapper
+        const {
+            name,
+            scoringSettings,
+            rosterSettings,
+            teams,
+            draftDetail,
+            positionalRatings,
+            liveScoring
+        } = mapEspnLeagueData(rawData, swid);
 
         // 3. Upsert to DB
         await upsertLeague(leagueId, year, name, scoringSettings, rosterSettings, teams, draftDetail, positionalRatings, liveScoring);
