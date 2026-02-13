@@ -167,7 +167,7 @@ describe('Prompt Engine', () => {
 
         it('should throw on invalid context', () => {
             const invalidContext = {
-                language: 'invalid' as any,
+                language: 'invalid' as unknown as PromptContext['language'],
                 leagueName: 'Test',
                 scoringSettings: {},
                 rosterSlots: {},

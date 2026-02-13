@@ -157,9 +157,9 @@ export function contextFromSnapshot(
             name: string;
             scoringSettings: ScoringSettings;
             rosterSlots: RosterSlots;
-            draftDetail?: any;
-            positionalRatings?: any;
-            liveScoring?: any;
+            draftDetail?: Record<string, unknown>;
+            positionalRatings?: Record<string, unknown>;
+            liveScoring?: Record<string, unknown>;
         };
         myTeam: TeamContext;
         opponent?: TeamContext;

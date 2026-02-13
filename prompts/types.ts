@@ -48,10 +48,10 @@ export interface PromptContext {
     /** RAG-retrieved news context */
     newsContext?: string;
     /** Advanced League Intelligence */
-    draftDetail?: any;
-    positionalRatings?: any;
-    liveScoring?: any;
-    pendingTransactions?: any;
+    draftDetail?: Record<string, unknown>;
+    positionalRatings?: Record<string, unknown>;
+    liveScoring?: Record<string, unknown>;
+    pendingTransactions?: Array<Record<string, unknown>>;
     /** Top available free agents */
     freeAgents?: Player[];
 }
@@ -129,8 +129,8 @@ export const ScheduleContextSchema = z.object({
 export const PromptContextSchema = z.object({
     language: z.enum(['en', 'el']),
     leagueName: z.string(),
-    scoringSettings: z.record(z.string(), z.any()),
-    rosterSlots: z.record(z.string(), z.any()),
+    scoringSettings: z.record(z.string(), z.unknown()),
+    rosterSlots: z.record(z.string(), z.unknown()),
     myTeam: TeamContextSchema,
     opponent: TeamContextSchema.optional(),
     matchup: MatchupContextSchema.optional(),

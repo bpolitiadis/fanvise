@@ -1,6 +1,11 @@
 import type { PromptContext, SupportedLanguage, PlayerContext } from '../types';
 import { getStatName } from '@/lib/espn/constants';
 
+interface ScoringItem {
+    statId: number;
+    points: number;
+}
+
 // ============================================================================
 // FanVise Strategist (Orchestrator) Prompt Templates
 // ============================================================================
@@ -11,14 +16,14 @@ import { getStatName } from '@/lib/espn/constants';
  * @param settings - The scoring settings object
  * @returns Formatted scoring rules string
  */
-function formatScoringSettings(settings: Record<string, any>): string {
+function formatScoringSettings(settings: Record<string, unknown>): string {
     // ESPN-style nested settings
-    const scoringItems = settings.scoringItems;
+    const scoringItems = settings.scoringItems as ScoringItem[] | undefined;
 
     if (Array.isArray(scoringItems)) {
         return scoringItems
             .map(item => {
-                const name = getStatName(item.statId, item.points);
+                const name = getStatName(item.statId);
                 return `${name}: ${item.points > 0 ? '+' : ''}${item.points}`;
             })
             .join(', ');
@@ -26,14 +31,14 @@ function formatScoringSettings(settings: Record<string, any>): string {
 
     // Fallback for flat settings
     const entries = Object.entries(settings)
-        .filter(([_, value]) => typeof value === 'number') as [string, number][];
+        .filter(([, value]) => typeof value === 'number') as [string, number][];
 
     if (entries.length === 0) return 'Custom scoring (see league settings).';
 
     return entries
         .map(([stat, value]) => {
             const statId = parseInt(stat);
-            const name = isNaN(statId) ? stat : getStatName(statId, value);
+            const name = isNaN(statId) ? stat : getStatName(statId);
             return `${name}: ${value > 0 ? '+' : ''}${value}`;
         })
         .join(', ');
@@ -67,47 +72,13 @@ function formatRoster(roster?: PlayerContext[]): string {
  */
 function formatRosterSlots(slots: Record<string, unknown>): string {
     const entries = Object.entries(slots)
-        .filter(([_, value]) => typeof value === 'number') as [string, number][];
+        .filter(([, value]) => typeof value === 'number') as [string, number][];
 
     if (entries.length === 0) return 'Standard roster configuration.';
 
     return entries
         .map(([slot, count]) => `${slot}: ${count}`)
         .join(', ');
-}
-
-/**
- * Formats draft intelligence for prompt injection.
- */
-function formatDraftIntelligence(draft?: any): string {
-    if (!draft || !draft.picks || draft.picks.length === 0) return 'No draft history available for analysis.';
-    return `Draft context is available for evaluation (Rounds: 1-${Math.max(...draft.picks.map((p: any) => p.roundId || 0))}). Analyze for pick value and busts.`;
-}
-
-/**
- * Formats positional ratings for prompt injection.
- */
-function formatPositionalRatings(ratings?: any): string {
-    if (!ratings || !ratings.positionalRatings) return 'Positional depth data not synchronized.';
-
-    const lines: string[] = [];
-    for (const [pos, posData] of Object.entries(ratings.positionalRatings)) {
-        const data = posData as any;
-        if (data.rating) {
-            lines.push(`- ${pos}: ${data.rating} rating`);
-        }
-    }
-    return lines.length > 0 ? lines.join('\n') : 'Positional ratings data incomplete.';
-}
-
-/**
- * Formats pending transactions for prompt injection.
- */
-function formatMarketIntelligence(pending?: any): string {
-    if (!pending || !Array.isArray(pending)) return 'No active market intel.';
-    const active = pending.filter((p: any) => p.status === 'PENDING');
-    if (active.length === 0) return 'No currently pending waivers or trade offers.';
-    return `${active.length} active transactions pending. Analyze for potential roster churn.`;
 }
 
 /**
@@ -142,8 +113,16 @@ You are the **FanVise Strategist**, a data-obsessed NBA fanatic and the user's t
     * If data is missing locally, explicitly say "I don't have that data in front of me right now."
 3. **SOURCE ATTRIBUTION**: Always cite specific sources (e.g., "[Per ESPN]", "[Per RotoWire]") as provided in the context tags.
 4. **NO EXTRAPOLATION**: Do not "guess" injury return dates or "project" stats unless you have a specific intelligence item supporting that projection.
-5. **LINK MANDATE**: For every claim regarding news or player status, you must append the source link if provided in the intelligence block.
-6. **STREAMING RULES**:
+5. **DETERMINISTIC STATUS CONTRACT**:
+    * For any injury/availability claim, require this evidence tuple from context: (player, status, timestamp, source).
+    * If any tuple field is missing, say exactly: "Insufficient verified status data."
+    * Allowed status labels are: OUT, GTD, Day-to-Day, Questionable, Available, OFS.
+6. **CONFLICT RESOLUTION**:
+    * If two items conflict, prefer the newest timestamp.
+    * If timestamps are tied, prefer higher trust source.
+    * Never blend contradictory statuses into one conclusion.
+7. **LINK MANDATE**: For every claim regarding news or player status, append source URL when available in context.
+8. **STREAMING RULES**:
     *   **NEVER recommend a player already listed in 'My Roster' or 'Opponent Roster'.**
     *   **NEVER recommend a player listed as 'OUT' or 'Injured' for streaming purposes.**
     *   **ONLY recommend players listed in 'Top Available Free Agents' section.**
@@ -225,8 +204,16 @@ const ORCHESTRATOR_EL = (ctx: PromptContext): string => `
     * Μην εφευρίσκετε ημερομηνίες επιστροφής από τραυματισμούς ή λεπτομέρειες ανταλλαγών.
     * Εάν λείπουν δεδομένα, πείτε ρητά: "Δεν έχω αυτά τα δεδομένα μπροστά μου αυτή τη στιγμή."
 3. **ΑΠΟΔΟΣΗ ΠΗΓΩΝ**: Αναφέρετε πάντα τις πηγές (π.χ. "[Κατά το ESPN]", "[Κατά το RotoWire]") όπως παρέχονται στα tags του context.
-4. **ΟΧΙ ΥΠΟΘΕΣΕΙΣ**: Μην "μαντεύετε" ημερομηνίες επιστροφής ή "προβάλλεις" στατιστικά εκτός αν υπάρχει συγκεκριμένη πληροφορία που να το υποστηρίζει.
-5. **LINK MANDATE**: Για κάθε ισχυρισμό σχετικά με ειδήσεις ή κατάσταση παίκτη, πρέπει να επισυνάπτεις το source link εάν παρέχεται.
+4. **ΟΧΙ ΥΠΟΘΕΣΕΙΣ**: Μην "μαντεύετε" ημερομηνίες επιστροφής ή "προβάλλετε" στατιστικά εκτός αν υπάρχει συγκεκριμένη πληροφορία που να το υποστηρίζει.
+5. **DETERMINISTIC STATUS CONTRACT**:
+    * Για κάθε ισχυρισμό τραυματισμού/διαθεσιμότητας, απαίτησε tuple τεκμηρίωσης: (player, status, timestamp, source).
+    * Αν λείπει οποιοδήποτε πεδίο, πες ακριβώς: "Insufficient verified status data."
+    * Επιτρεπόμενα status labels: OUT, GTD, Day-to-Day, Questionable, Available, OFS.
+6. **CONFLICT RESOLUTION**:
+    * Αν δύο πηγές συγκρούονται, προτίμησε την πιο πρόσφατη χρονική σήμανση.
+    * Αν η χρονική σήμανση είναι ίδια, προτίμησε την πηγή με υψηλότερο trust.
+    * Μην συγχωνεύεις αντικρουόμενα status σε ένα συμπέρασμα.
+7. **LINK MANDATE**: Για κάθε ισχυρισμό σχετικά με ειδήσεις ή κατάσταση παίκτη, επισύναψε source URL όταν υπάρχει στο context.
 
 # ΠΛΑΙΣΙΟ ΑΠΑΝΤΗΣΗΣ
 - **Persona**: "Data-Freak Friend" (Φιλικός, ανταγωνιστικός, stat-obsessed).
