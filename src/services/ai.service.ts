@@ -6,16 +6,23 @@
  * ARCHITECTURE NOTE:
  * Uses a "Dual-Provider Strategy":
  * 1. **Google Gemini (Cloud)**: Primary engine for high-reasoning tasks (Strategic Advice).
+ *    Used when low-latency and maximum intelligence are required.
  * 2. **Ollama (Local)**: Optional fallback or privacy-focused alternative for users 
- *    running distinct local models (e.g., DeepSeek R1 for logic without data leakage).
+ *    running distinct local models (e.g., DeepSeek R1). 
+ *    Enables fully local intelligence extraction without leaking league data to the cloud.
  * 
- * This abstraction ensures the rest of the app doesn't care which brain is thinking.
+ * This abstraction ensures the rest of the app doesn't care which "brain" is thinking.
  * 
  * @module services/ai
  */
 
 import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai';
-import { AIStructuredResponseSchema, type AIStructuredResponse } from '@/prompts/types';
+import {
+    AIStructuredResponseSchema,
+    type AIStructuredResponse,
+    type ChatMessage,
+    type SupportedLanguage
+} from '@/types/ai';
 import { withRetry, sleep } from '@/utils/retry';
 
 // ============================================================================
@@ -29,13 +36,15 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
 /** Whether to use local AI (Ollama) instead of Gemini */
-const USE_LOCAL_AI = process.env.USE_LOCAL_AI;
+const USE_LOCAL_AI = process.env.USE_LOCAL_AI === 'true';
 
 /** Ollama model name */
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL;
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'deepseek-r1:14b';
 
 /** Ollama API endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
+
+console.log(`[AI Service] Initialization: Local AI is ${USE_LOCAL_AI ? 'ENABLED' : 'DISABLED'} (Env: ${process.env.USE_LOCAL_AI})`);
 
 // Initialize Gemini client
 const genAI = GOOGLE_API_KEY ? new GoogleGenerativeAI(GOOGLE_API_KEY) : null;
@@ -64,13 +73,7 @@ export interface IntelligenceProvider {
 // Types
 // ============================================================================
 
-/**
- * Chat message format compatible with both Gemini and Ollama.
- */
-export interface ChatMessage {
-    role: 'user' | 'model' | 'assistant';
-    content: string;
-}
+// Core AI types now imported from @/types/ai
 
 /**
  * Options for AI response generation.
@@ -198,6 +201,13 @@ async function generateOllamaStream(
         content: msg.content,
     }));
 
+    // Reinforce persona and scope one last time before the user query
+    // This helps models like deepseek-r1 stay on track when the system message is long.
+    messages.push({
+        role: 'system',
+        content: "REMINDER: You are the FanVise Strategist (NBA only). IGNORE football/NFL. Use provided context ONLY."
+    });
+
     // Append current user query as a separate message
     messages.push({ role: 'user', content: message });
 
@@ -208,6 +218,11 @@ async function generateOllamaStream(
             model: OLLAMA_MODEL,
             messages,
             stream: true,
+            options: {
+                num_ctx: 16384, // Ensure enough context for the large strategist prompt
+                temperature: 0.1, // Lower temperature for more objective grounding
+                top_p: 0.9,
+            }
         }),
     });
 
@@ -272,11 +287,11 @@ export async function generateStreamingResponse(
     options: GenerateOptions = {}
 ): Promise<StreamResult> {
     if (USE_LOCAL_AI) {
-        console.log(`[AI Service] Using Ollama (${OLLAMA_MODEL})`);
+        console.log(`[AI Service] Routing to Ollama (${OLLAMA_MODEL})`);
         return generateOllamaStream(history, message, options);
     }
 
-    console.log(`[AI Service] Using Gemini (${GEMINI_MODEL})`);
+    console.log(`[AI Service] Routing to Gemini (${GEMINI_MODEL})`);
     return generateGeminiStream(history, message, options);
 }
 
@@ -427,7 +442,7 @@ class OllamaIntelligenceProvider implements IntelligenceProvider {
  * Gets the configured intelligence provider based on environment variables.
  */
 export function getIntelligenceProvider(): IntelligenceProvider {
-    if (USE_LOCAL_AI === 'true') {
+    if (USE_LOCAL_AI) {
         return new OllamaIntelligenceProvider();
     }
     return new GeminiIntelligenceProvider();
@@ -540,7 +555,7 @@ export function getServiceStatus(): {
 } {
     const embeddingProvider = process.env.EMBEDDING_PROVIDER || 'gemini';
 
-    if (USE_LOCAL_AI === 'true') {
+    if (USE_LOCAL_AI) {
         return {
             provider: 'ollama',
             model: OLLAMA_MODEL || 'unknown',
