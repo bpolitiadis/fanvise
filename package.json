@@ -10,7 +10,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "news:ingest": "npx tsx scripts/ingest-news.ts"
+    "test:integration": "RUN_INTEGRATION_TESTS=true vitest run tests/integration/**/*.test.ts",
+    "test:integration:live-feeds": "RUN_INTEGRATION_TESTS=true RUN_LIVE_FEED_TESTS=true vitest run tests/integration/**/*.test.ts",
+    "news:ingest": "npx tsx src/ops/news-ingest.ts",
+    "news:ingest:historical": "npx tsx src/ops/news-ingest-historical.ts",
+    "league:sync": "npx tsx src/ops/sync-league.ts",
+    "test:ai": "cd fanvise_eval && ([ -d .venv ] || python3 -m venv .venv) && .venv/bin/python -m pip install -r requirements.txt && .venv/bin/python test_fanvise.py"
   },
   "dependencies": {
     "@google-cloud/vertexai": "^1.10.0",
