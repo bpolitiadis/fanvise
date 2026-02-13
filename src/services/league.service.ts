@@ -4,9 +4,9 @@
  * Builds comprehensive "Intelligence Snapshots" for AI context injection.
  * 
  * BUSINESS CONTEXT:
- * This service is the "Eyes" of the Consigliere. It aggregates fragmented data 
- * from Supabase (persistent settings) and ESPN (real-time scores) to construct 
- * a complete picture of the user's fantasy environment. This "Snapshot" is 
+ * This service is the "Eyes" of the Strategist. It aggregates fragmented data 
+ * from ESPN into a structured league perspective required for the 
+ * FanVise Strategist prompt. This "Snapshot" is 
  * essential for preventing AI hallucinations by grounding every piece of advice 
  * in the specific rules, roster constraints, and matchup realities of the user.
  * 
@@ -18,79 +18,21 @@ import { EspnClient } from '@/lib/espn/client';
 import { PlayerService } from '@/services/player.service';
 import { withRetry } from '@/utils/retry';
 import type {
-    TeamContext,
-    PlayerContext,
-    MatchupContext,
-    ScheduleContext,
+    Team as TeamContext,
+    Player as PlayerContext,
+    Matchup as MatchupContext,
+    WeeklySchedule as ScheduleContext,
     ScoringSettings,
     RosterSlots,
-} from '@/prompts/types';
+} from '@/types/fantasy';
+import type {
+    IntelligenceSnapshot,
+    DbLeague,
+    DbTeam
+} from '@/types/league';
 import { getPositionName } from '@/lib/espn/constants';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Complete intelligence snapshot for a user's current context.
- * This is the primary output of this service, designed to be
- * directly transformed into a PromptContext.
- */
-export interface IntelligenceSnapshot {
-    /** League information */
-    league: {
-        id: string;
-        name: string;
-        seasonId: string;
-        scoringSettings: ScoringSettings;
-        rosterSlots: RosterSlots;
-        draftDetail?: any;
-        positionalRatings?: any;
-        liveScoring?: any;
-    };
-    /** The team currently being viewed (perspective) */
-    myTeam: TeamContext;
-    /** Current opponent if in an active matchup */
-    opponent?: TeamContext;
-    /** Current matchup scores and status */
-    matchup?: MatchupContext;
-    /** Schedule density for streaming decisions */
-    schedule?: ScheduleContext;
-    /** Top available free agents */
-    freeAgents?: PlayerContext[];
-    /** Timestamp of when snapshot was built */
-    builtAt: string;
-}
-
-/**
- * Raw team data from the database.
- */
-interface DbTeam {
-    id: string | number;
-    name: string;
-    abbrev: string;
-    manager?: string;
-    manager_name?: string;
-    is_user_owned?: boolean;
-    wins?: number;
-    losses?: number;
-    ties?: number;
-}
-
-/**
- * Raw league data from the database.
- */
-interface DbLeague {
-    league_id: string;
-    season_id: string;
-    name: string;
-    scoring_settings: ScoringSettings;
-    roster_settings: RosterSlots;
-    draft_detail?: any;
-    positional_ratings?: any;
-    live_scoring?: any;
-    teams?: DbTeam[];
-}
+// Core types now imported from @/types/league and @/types/fantasy
 
 // ============================================================================
 // Database Functions
@@ -312,6 +254,9 @@ async function fetchMatchupFromEspn(
                     totalPoints: seasonStats?.appliedTotal,
                     gamesPlayed: seasonStats?.stats?.['42'],
                     avgStats: seasonStats?.stats,
+                    // Additional Intelligence
+                    seasonOutlook: player?.seasonOutlook,
+                    lastNewsDate: player?.lastNewsDate,
                 };
             });
         };
@@ -460,7 +405,7 @@ async function calculateScheduleDensity(
  * Builds a comprehensive Intelligence Snapshot for AI context injection.
  * 
  * This is the main entry point for gathering all context needed by the
- * Strategic Consigliere prompt. It aggregates data from:
+ * FanVise Strategist prompt. It aggregates data from:
  * - Supabase (league settings, teams)
  * - ESPN API (current matchup scores)
  * 
@@ -559,7 +504,29 @@ export async function buildIntelligenceSnapshot(
     let freeAgents: PlayerContext[] = [];
     try {
         console.log(`[League Service] Fetching top free agents for League ${leagueId}`);
-        freeAgents = await playerService.getTopFreeAgents(15); // Fetch top 15 to give AI some options
+        // Fetch a larger pool candidates (150) to ensure we find healthy/unowned options
+        // Top 50 are often injured stars (e.g. AD, Jimmy Butler) 
+        const rawFreeAgents = await playerService.getTopFreeAgents(150);
+
+        // Create sets of owned player IDs for O(1) lookup
+        const myPlayerIds = new Set(myTeam.roster?.map(p => p.id) || []);
+        const opponentPlayerIds = new Set(opponent?.roster?.map(p => p.id) || []);
+
+        freeAgents = rawFreeAgents.filter(p => {
+            // Exclude if owned by me
+            if (myPlayerIds.has(p.id)) return false;
+
+            // Exclude if owned by opponent
+            if (opponentPlayerIds.has(p.id)) return false;
+
+            // Exclude if injured (unless day-to-day, but safer to exclude all for "streaming")
+            if (p.isInjured) return false;
+
+            return true;
+        }).slice(0, 15); // Return top 15 valid options
+
+        console.log(`[League Service] Filtered free agents: ${freeAgents.length} valid options found.`);
+
     } catch (faError) {
         console.error('[League Service] Failed to fetch free agents:', faError);
     }

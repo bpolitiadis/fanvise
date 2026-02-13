@@ -1,3 +1,18 @@
+/**
+ * FanVise News Service
+ * 
+ * Manages the Real-Time Intelligence pipeline (RAG).
+ * Responsibilities:
+ * 1. RSS Ingestion from multiple high-trust NBA sources.
+ * 2. Automated Intelligence Extraction using AI (Injury status, impact, sentiment).
+ * 3. Vector Embedding generation for semantic search.
+ * 4. Deduplication and persistence to Supabase.
+ * 
+ * This service provides the "Current Events" context that prevents the AI 
+ * from using stale information about player availability.
+ * 
+ * @module services/news
+ */
 import Parser from 'rss-parser';
 import { createClient } from '@supabase/supabase-js'; // Use direct client for service role
 import { GoogleGenerativeAI, type GenerativeModel } from "@google/generative-ai";
@@ -23,8 +38,15 @@ const FEEDS = [
     { source: 'ESPN', url: 'https://www.espn.com/espn/rss/nba/news', trust_level: 5 },
     { source: 'Rotowire', url: 'https://www.rotowire.com/rss/news.php?sport=NBA', trust_level: 4 },
     { source: 'Yahoo', url: 'https://sports.yahoo.com/nba/rss.xml', trust_level: 5 },
-    { source: 'CBS Sports', url: 'https://www.cbssports.com/rss/external/nba/', trust_level: 4 },
-    { source: 'Fox Sports', url: 'https://api.foxsports.com/v1/rss?partnerKey=zBaFxY3pS69W6X76G9V4985zbdP95A8D&tag=nba', trust_level: 4 }
+    { source: 'CBS Sports', url: 'https://www.cbssports.com/rss/headlines/nba', trust_level: 4 },
+    // Fox Sports returns 403 Forbidden, replaced with RealGM for better reliability
+    { source: 'RealGM', url: 'https://basketball.realgm.com/rss/wiretap/0/0.xml', trust_level: 4 },
+    // New Sources
+    // { source: 'FantasyPros NBA', url: 'https://partners.fantasypros.com/api/v1/rss-feed.php?sport=NBA', trust_level: 4 }, // 404 Not Found
+    // { source: 'Razzball', url: 'https://basketball.razzball.com/feed', trust_level: 3 }, // 403 Forbidden (Cloudflare)
+    { source: 'SportsEthos', url: 'https://sportsethos.com/tag/fantasy-basketball/feed', trust_level: 3 },
+    // Placeholder URL for Underdog NBA - User needs to replace this
+    { source: 'Underdog NBA', url: 'https://rss.app/feeds/UNDERDOG_NBA_PLACEHOLDER.xml', trust_level: 4 }
 ];
 
 // Initialize Supabase with Service Role Key (preferred) or Anon Key (fallback for dev)
@@ -104,7 +126,7 @@ function mapEspnArticleToRssItem(article: any) {
 }
 
 // --- Processing Utilities ---
-async function processItem(item: any, source: string, watchlist: string[], activeKeywords: string[]) {
+async function processItem(item: any, source: string, watchlist: string[], activeKeywords: string[], dryRun: boolean = false) {
     if (!item.title || !item.link) return false;
 
     // 1. Fast Keyword Check
@@ -116,28 +138,39 @@ async function processItem(item: any, source: string, watchlist: string[], activ
     }
 
     try {
-        // 2. Check if exists
-        const { data: existing } = await supabase
-            .from('news_items')
-            .select('id')
-            .eq('url', item.link)
-            .maybeSingle();
+        // 2. Check if exists (by URL or GUID)
+        let query = supabase.from('news_items').select('id');
+
+        if (item.guid) {
+            // If GUID exists, check matches on EITHER url OR guid
+            query = query.or(`url.eq.${item.link},guid.eq.${item.guid}`);
+        } else {
+            // Fallback to just URL
+            query = query.eq('url', item.link);
+        }
+
+        const { data: existing } = await query.maybeSingle();
 
         if (existing) return false;
 
         console.log(`[News Service] Processing: ${item.title}`);
 
         // 3. Generate Intelligence & Embedding
+        if (dryRun) {
+            console.log(`[News Service] DRY RUN: Skipping AI extraction and DB insert for: ${item.title}`);
+            return true;
+        }
+
         const contentText = cleanContent(item.contentSnippet || item.title || "");
         const [intelligence, embedding] = await Promise.all([
             extractIntelligence(contentText),
             getEmbedding(`${item.title} ${contentText}`)
         ]);
 
-        // 4. Gatekeeper
-        if (intelligence.trust_level < (FEEDS.find(f => f.source === source)?.trust_level || 1)) {
-            return false;
-        }
+        // 4. Gatekeeper - Disabled as AI does not return trust_level currently
+        // if (intelligence.trust_level < (FEEDS.find(f => f.source === source)?.trust_level || 1)) {
+        //     return false;
+        // }
 
         // 5. Store
         const { error } = await supabase.from('news_items').insert({
@@ -156,10 +189,15 @@ async function processItem(item: any, source: string, watchlist: string[], activ
             injury_status: intelligence.injury_status,
             expected_return_date: intelligence.expected_return_date,
             impacted_player_ids: intelligence.impacted_player_ids,
-            trust_level: (FEEDS.find(f => f.source === source)?.trust_level || intelligence.trust_level)
+            trust_level: (FEEDS.find(f => f.source === source)?.trust_level || intelligence.trust_level),
+            guid: item.guid || null
         });
 
         if (error) {
+            if (error.code === '23505') {
+                console.log(`[News Service] Item already exists (skipping duplicate): ${item.title}`);
+                return true;
+            }
             console.error(`[News Service] Error inserting news:`, error);
             return false;
         }
@@ -170,9 +208,9 @@ async function processItem(item: any, source: string, watchlist: string[], activ
     }
 }
 
-export async function fetchAndIngestNews(watchlist: string[] = []) {
+export async function fetchAndIngestNews(watchlist: string[] = [], limit: number = 200, dryRun: boolean = false) {
     let importedCount = 0;
-    const MAX_ITEMS_PER_SYNC = 50; // Increased throughput for user request
+    const MAX_ITEMS_PER_SYNC = limit; // Increased throughput for user request
     const activeKeywords = [...NBA_KEYWORDS, ...watchlist];
 
     console.log(`Starting High-Throughput NBA Ingestion... (Watchlist: ${watchlist.length} players)`);
@@ -193,13 +231,13 @@ export async function fetchAndIngestNews(watchlist: string[] = []) {
 
                 const batch = itemsToProcess.slice(i, i + 2);
                 const results = await Promise.all(
-                    batch.map(item => processItem(item, feed.source, watchlist, activeKeywords))
+                    batch.map(item => processItem(item, feed.source, watchlist, activeKeywords, dryRun))
                 );
 
                 importedCount += results.filter(Boolean).length;
 
                 // Increased sleep between batches for better Free Tier compliance
-                if (batch.length > 0) await sleep(1000);
+                if (batch.length > 0 && !dryRun) await sleep(1000);
             }
 
         } catch (err) {

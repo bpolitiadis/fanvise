@@ -14,8 +14,9 @@
  */
 
 import { getSystemPrompt, contextFromSnapshot } from "@/prompts";
-import type { SupportedLanguage } from "@/prompts/types";
-import { generateStreamingResponse, type ChatMessage } from "@/services/ai.service";
+import type { SupportedLanguage } from "@/types/ai";
+import { generateStreamingResponse } from "@/services/ai.service";
+import type { ChatMessage } from "@/types/ai";
 import { buildIntelligenceSnapshot } from "@/services/league.service";
 import { searchNews } from "@/services/news.service";
 
@@ -59,7 +60,8 @@ export async function generateStrategicResponse(
                     const typedItem = item as NewsItem;
                     const sourceTag = typedItem.source ? ` [SOURCE: ${typedItem.source}]` : '';
                     const playerTag = typedItem.player_name ? ` [PLAYER: ${typedItem.player_name}]` : '';
-                    return `- [${typedItem.published_at || 'Recent'}]${sourceTag}${playerTag} ${typedItem.title || "News"}: ${typedItem.summary || typedItem.content || ""}`;
+                    const description = (typedItem.summary || typedItem.content || "").substring(0, 300);
+                    return `- [${typedItem.published_at || 'Recent'}]${sourceTag}${playerTag} ${typedItem.title || "News"}: ${description}${description.length === 300 ? '...' : ''}`;
                 })
                 .join("\n");
         }
@@ -87,13 +89,14 @@ export async function generateStrategicResponse(
                     opponent: snapshot.opponent,
                     matchup: snapshot.matchup,
                     schedule: snapshot.schedule,
+                    freeAgents: snapshot.freeAgents,
                 },
                 language,
                 newsContext ? `Recent News & Intelligence:\n${newsContext}` : undefined
             );
 
             // Generate system prompt using the Prompt Engine
-            systemInstruction = getSystemPrompt('consigliere', promptContext);
+            systemInstruction = getSystemPrompt('orchestrator', promptContext);
 
             // Diagnostic: Log prompt size to help debug token-limit issues with smaller models
             console.log(`[Intelligence Service] System prompt size: ${systemInstruction.length} chars (~${Math.ceil(systemInstruction.length / 4)} tokens)`);
@@ -110,11 +113,12 @@ export async function generateStrategicResponse(
             } else {
                 console.error(`[Intelligence Service] Unknown Error: ${JSON.stringify(snapshotError)}`);
             }
-            // Fall back to basic prompt
-            systemInstruction = buildFallbackPrompt(newsContext, language);
+            // Fall back to basic prompt with error context
+            const errorMessage = snapshotError instanceof Error ? snapshotError.message : 'Unknown';
+            systemInstruction = buildFallbackPrompt(newsContext, language, `[SYSTEM NOTICE: League context failed - ${errorMessage}]`);
         }
     } else {
-        console.error(`[Intelligence Service] ❌ NO ACTIVE PERSPECTIVE PROVIDED. Team: ${activeTeamId}, League: ${activeLeagueId}`);
+        console.warn(`[Intelligence Service] No active perspective provided. Falling back to generic intelligence.`);
         systemInstruction = buildFallbackPrompt(newsContext, language);
     }
 
@@ -129,21 +133,24 @@ export async function generateStrategicResponse(
 /**
  * Builds a minimal fallback prompt when Intelligence Snapshot is unavailable.
  */
-function buildFallbackPrompt(newsContext: string, language: SupportedLanguage): string {
+function buildFallbackPrompt(newsContext: string, language: SupportedLanguage, systemNotice?: string): string {
     const languageInstruction =
         language === 'el'
             ? "Respond in Greek, while keeping core basketball/fantasy terminology in English when that is clearer."
             : "Respond in English.";
 
-    return `You are FanVise, a fantasy sports expert and strategic consigliere.
-Your goal is to provide elite, data-driven advice tailored to the user's specific context.
+    return `You are the FanVise Strategist, a data-obsessed NBA fanatic and fantasy basketball expert.
+Your goal is to provide elite, data-driven advice specifically for NBA Fantasy leagues.
 
-${newsContext ? `Recent News & Intelligence:\n${newsContext}\n` : ''}
+STRICT SCOPE: You are a localized NBA intelligence engine. You MUST IGNORE all other sports (NFL, MLB, etc.). If you do not have data for a specific NBA player, do NOT invent it.
+
+${systemNotice ? `${systemNotice}\n` : ''}
+${newsContext ? `Recent NBA News & Intelligence:\n${newsContext}\n` : ''}
 
 INSTRUCTIONS:
-0. ${languageInstruction}
 1. Be concise, strategic, and authoritative.
-2. Use the provided news context to inform your answers about player status or performance.
-3. If specific league context is missing, acknowledge it and provide general guidance.
-4. Maintain your role as a knowledgeable fantasy sports advisor.`;
+2. ZERO SPECULATION: Only use provided news context for player status. Do NOT invent player rosters.
+3. ${systemNotice ? "Explicitly mention that you are currently providing general NBA advice because the user's specific league data could not be loaded." : "If specific league context is missing, acknowledge it and provide general NBA guidance."}
+4. Maintain your role as a knowledgeable NBA/Fantasy Basketball advisor.
+5. ${languageInstruction}`;
 }

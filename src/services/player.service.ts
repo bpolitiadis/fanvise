@@ -1,5 +1,5 @@
 import { EspnClient } from '@/lib/espn/client';
-import { PlayerContext } from '@/prompts/types';
+import { Player as PlayerContext } from '@/types/fantasy';
 import { getPositionName } from '@/lib/espn/constants';
 import { EspnPlayer, EspnKonaPlayerEntry } from '@/lib/espn/types';
 
@@ -63,6 +63,8 @@ export class PlayerService {
             avgPoints: statsToUse?.appliedAverage || 0,
             totalPoints: statsToUse?.appliedTotal || 0,
             // Additional context for free agents
+            seasonOutlook: player.seasonOutlook,
+            lastNewsDate: player.lastNewsDate,
             ownership: player.ownership ? {
                 percentOwned: player.ownership.percentOwned,
                 percentChange: player.ownership.percentChange,
