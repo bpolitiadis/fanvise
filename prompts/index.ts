@@ -7,7 +7,7 @@
  * @module prompts
  */
 
-import { getConsiglierePrompt } from './agents/consigliere';
+import { getOrchestratorPrompt } from './agents/orchestrator';
 import { PromptContextSchema } from './types';
 import type {
     AgentName,
@@ -62,7 +62,7 @@ export {
  * ```typescript
  * import { getSystemPrompt } from '@/prompts';
  * 
- * const prompt = getSystemPrompt('consigliere', {
+ * const prompt = getSystemPrompt('orchestrator', {
  *   language: 'en',
  *   leagueName: 'Office Champions',
  *   scoringSettings: { PTS: 1, AST: 1.5, REB: 1.2, BLK: 3, STL: 3, TO: -1 },
@@ -100,14 +100,14 @@ export function getSystemPrompt(agentName: AgentName, context: PromptContext): s
 
     // Select agent template
     switch (agentName) {
-        case 'consigliere':
-            return getConsiglierePrompt(context);
+        case 'orchestrator':
+            return getOrchestratorPrompt(context);
 
         case 'strategist':
             // Future: Add strategist agent for lineup optimization
-            // For now, fall back to consigliere
-            console.warn('Strategist agent not yet implemented, using consigliere');
-            return getConsiglierePrompt(context);
+            // For now, fall back to orchestrator
+            console.warn('Strategist agent not yet implemented, using orchestrator');
+            return getOrchestratorPrompt(context);
 
         default:
             throw new Error(`Unknown agent: ${agentName}`);

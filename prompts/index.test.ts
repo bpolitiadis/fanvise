@@ -41,7 +41,7 @@ describe('Prompt Engine', () => {
 
     describe('getSystemPrompt', () => {
         it('should generate English prompt when language is en', () => {
-            const prompt = getSystemPrompt('consigliere', baseContext);
+            const prompt = getSystemPrompt('orchestrator', baseContext);
 
             expect(prompt).toContain('FanVise');
             expect(prompt).toContain('Alpha Wolves');
@@ -55,7 +55,7 @@ describe('Prompt Engine', () => {
                 language: 'el',
             };
 
-            const prompt = getSystemPrompt('consigliere', greekContext);
+            const prompt = getSystemPrompt('orchestrator', greekContext);
 
             expect(prompt).toContain('FanVise');
             expect(prompt).toContain('Η Ομάδα Μου');
@@ -63,7 +63,7 @@ describe('Prompt Engine', () => {
         });
 
         it('should include scoring settings in prompt', () => {
-            const prompt = getSystemPrompt('consigliere', baseContext);
+            const prompt = getSystemPrompt('orchestrator', baseContext);
 
             expect(prompt).toContain('PTS');
             expect(prompt).toContain('AST');
@@ -81,7 +81,7 @@ describe('Prompt Engine', () => {
                 },
             };
 
-            const prompt = getSystemPrompt('consigliere', contextWithOpponent);
+            const prompt = getSystemPrompt('orchestrator', contextWithOpponent);
 
             expect(prompt).toContain('Beta Bears');
             expect(prompt).toContain('Jane Smith');
@@ -104,7 +104,7 @@ describe('Prompt Engine', () => {
                 },
             };
 
-            const prompt = getSystemPrompt('consigliere', contextWithMatchup);
+            const prompt = getSystemPrompt('orchestrator', contextWithMatchup);
 
             expect(prompt).toContain('450.5');
             expect(prompt).toContain('420');
@@ -122,7 +122,7 @@ describe('Prompt Engine', () => {
                 },
             };
 
-            const prompt = getSystemPrompt('consigliere', contextWithSchedule);
+            const prompt = getSystemPrompt('orchestrator', contextWithSchedule);
 
             expect(prompt).toContain('My Games Remaining');
             expect(prompt).toContain('Volume Advantage');
@@ -136,9 +136,9 @@ describe('Prompt Engine', () => {
                 pendingTransactions: [{ id: '1', status: 'PENDING' }],
             };
 
-            const prompt = getSystemPrompt('consigliere', contextWithIntel);
+            const prompt = getSystemPrompt('orchestrator', contextWithIntel);
 
-            // The consigliere template includes scoring settings and roster data;
+            // The orchestrator template includes scoring settings and roster data;
             // draftDetail/positionalRatings/pendingTransactions are passed through
             // the context but not rendered as named sections in the current template.
             expect(prompt).toContain('CONTEXT BLOCKS');
@@ -146,7 +146,7 @@ describe('Prompt Engine', () => {
         });
 
         it('should include player performance metrics in roster', () => {
-            const prompt = getSystemPrompt('consigliere', baseContext);
+            const prompt = getSystemPrompt('orchestrator', baseContext);
             expect(prompt).toContain('AVG: 55.5');
             expect(prompt).toContain('GP: 48');
         });
@@ -158,8 +158,8 @@ describe('Prompt Engine', () => {
                 myTeam: { ...baseTeam, isUserOwned: false },
             };
 
-            const ownedPrompt = getSystemPrompt('consigliere', ownedContext);
-            const notOwnedPrompt = getSystemPrompt('consigliere', notOwnedContext);
+            const ownedPrompt = getSystemPrompt('orchestrator', ownedContext);
+            const notOwnedPrompt = getSystemPrompt('orchestrator', notOwnedContext);
 
             expect(ownedPrompt).toContain('USER\'S OWN TEAM');
             expect(notOwnedPrompt).toContain('Opponent perspective');
@@ -174,7 +174,7 @@ describe('Prompt Engine', () => {
                 myTeam: baseTeam,
             };
 
-            expect(() => getSystemPrompt('consigliere', invalidContext)).toThrow();
+            expect(() => getSystemPrompt('orchestrator', invalidContext)).toThrow();
         });
     });
 

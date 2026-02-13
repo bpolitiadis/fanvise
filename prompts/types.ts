@@ -1,123 +1,32 @@
 import { z } from 'zod';
+import type {
+    Player,
+    Team,
+    Matchup,
+    WeeklySchedule,
+    ScoringSettings,
+    RosterSlots
+} from '@/types/fantasy';
+import type {
+    AgentName,
+    SupportedLanguage
+} from '@/types/ai';
 
-// ============================================================================
-// Agent Types
-// ============================================================================
-
-/**
- * Available AI agent personas in the FanVise system.
- * Each agent has a distinct personality and expertise area.
- */
-export type AgentName = 'consigliere' | 'strategist';
-
-/**
- * Supported languages for prompt localization.
- * - 'en': English (default)
- * - 'el': Greek (Ελληνικά)
- */
-export type SupportedLanguage = 'en' | 'el';
-
-// ============================================================================
-// Context Types
-// ============================================================================
-
-/**
- * Scoring settings for the league.
- * ESPN returns complex nested objects, so we accept any valid JSON.
- * For point calculations, we extract the relevant numeric values at runtime.
- */
-export type ScoringSettings = Record<string, unknown>;
-
-/**
- * Roster slot configuration.
- * ESPN returns complex nested objects, so we accept any valid JSON.
- */
-export type RosterSlots = Record<string, unknown>;
-
-/**
- * Player context for roster analysis.
- */
-export interface PlayerContext {
-    id: string;
-    firstName: string;
-    lastName: string;
-    fullName: string;
-    proTeam: string;
-    position: string;
-    injuryStatus: string;
-    isInjured: boolean;
-    jersey?: string;
-    avgPoints?: number;
-    totalPoints?: number;
-    gamesPlayed?: number;
-    avgStats?: Record<string, number>;
-    ownership?: {
-        percentOwned?: number;
-        percentChange?: number;
-        percentStarted?: number;
-    };
-}
-
-/**
- * Team context for prompt injection.
- */
-export interface TeamContext {
-    /** Team ID (ESPN format) */
-    id: string;
-    /** Team display name */
-    name: string;
-    /** Team abbreviation */
-    abbrev: string;
-    /** Manager/owner name */
-    manager: string;
-    /** Current record */
-    record?: {
-        wins: number;
-        losses: number;
-        ties: number;
-    };
-    /** Whether this is the user's own team */
-    isUserOwned?: boolean;
-    /** Team logo URL */
-    logo?: string;
-    /** Current roster */
-    roster?: PlayerContext[];
-}
-
-/**
- * Current matchup state.
- */
-export interface MatchupContext {
-    /** User's current score */
-    myScore: number;
-    /** Opponent's current score */
-    opponentScore: number;
-    /** Point differential (positive = winning) */
-    differential: number;
-    /** Matchup status */
-    status: 'in_progress' | 'completed' | 'upcoming';
-    /** Current scoring period/week */
-    scoringPeriod?: number;
-}
-
-/**
- * Schedule density for the current week.
- * Used for streaming and lineup optimization decisions.
- */
-export interface ScheduleContext {
-    /** Games my team has played this week */
-    myGamesPlayed: number;
-    /** Games my team has remaining this week */
-    myGamesRemaining: number;
-    /** Games opponent has played this week */
-    opponentGamesPlayed: number;
-    /** Games opponent has remaining this week */
-    opponentGamesRemaining: number;
-}
+// Re-export core types for backward compatibility within the legacy prompt engine
+export type {
+    Player as PlayerContext,
+    Team as TeamContext,
+    Matchup as MatchupContext,
+    WeeklySchedule as ScheduleContext,
+    ScoringSettings,
+    RosterSlots,
+    AgentName,
+    SupportedLanguage
+};
 
 /**
  * Complete context object for prompt generation.
- * All fields required for the Strategic Consigliere to provide accurate advice.
+ * All fields required for the FanVise Strategist to provide accurate advice.
  */
 export interface PromptContext {
     /** Response language */
@@ -129,13 +38,13 @@ export interface PromptContext {
     /** League roster slot configuration */
     rosterSlots: RosterSlots;
     /** Active team context (perspective) */
-    myTeam: TeamContext;
+    myTeam: Team;
     /** Current opponent (if in matchup) */
-    opponent?: TeamContext;
+    opponent?: Team;
     /** Current matchup scores */
-    matchup?: MatchupContext;
+    matchup?: Matchup;
     /** Schedule density for the week */
-    schedule?: ScheduleContext;
+    schedule?: WeeklySchedule;
     /** RAG-retrieved news context */
     newsContext?: string;
     /** Advanced League Intelligence */
@@ -144,7 +53,7 @@ export interface PromptContext {
     liveScoring?: any;
     pendingTransactions?: any;
     /** Top available free agents */
-    freeAgents?: PlayerContext[];
+    freeAgents?: Player[];
 }
 
 // ============================================================================
@@ -152,7 +61,7 @@ export interface PromptContext {
 // ============================================================================
 
 /**
- * Zod schema for validating PlayerContext objects.
+ * Zod schema for validating Player objects.
  */
 export const PlayerContextSchema = z.object({
     id: z.string(),
@@ -176,7 +85,7 @@ export const PlayerContextSchema = z.object({
 });
 
 /**
- * Zod schema for validating TeamContext objects.
+ * Zod schema for validating Team objects.
  */
 export const TeamContextSchema = z.object({
     id: z.string(),
@@ -194,7 +103,7 @@ export const TeamContextSchema = z.object({
 });
 
 /**
- * Zod schema for validating MatchupContext objects.
+ * Zod schema for validating Matchup objects.
  */
 export const MatchupContextSchema = z.object({
     myScore: z.number(),
@@ -205,7 +114,7 @@ export const MatchupContextSchema = z.object({
 });
 
 /**
- * Zod schema for validating ScheduleContext objects.
+ * Zod schema for validating Schedule objects.
  */
 export const ScheduleContextSchema = z.object({
     myGamesPlayed: z.number(),
@@ -230,27 +139,9 @@ export const PromptContextSchema = z.object({
     freeAgents: z.array(PlayerContextSchema).optional(),
 });
 
-// ============================================================================
-// AI Response Schemas
-// ============================================================================
+// Re-export AI structured response schema from centralized location
+export {
+    AIStructuredResponseSchema,
+    type AIStructuredResponse
+} from '@/types/ai';
 
-/**
- * Schema for validating structured AI responses.
- * Used when the AI returns JSON-formatted data.
- */
-export const AIStructuredResponseSchema = z.object({
-    /** Main response text */
-    response: z.string(),
-    /** Confidence level (0-1) */
-    confidence: z.number().min(0).max(1).optional(),
-    /** Recommended actions */
-    actions: z.array(z.object({
-        type: z.enum(['drop', 'add', 'trade', 'hold', 'stream']),
-        playerName: z.string(),
-        reason: z.string(),
-    })).optional(),
-    /** Data sources used */
-    sources: z.array(z.string()).optional(),
-});
-
-export type AIStructuredResponse = z.infer<typeof AIStructuredResponseSchema>;
