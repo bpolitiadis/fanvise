@@ -1,19 +1,29 @@
-import * as dotenv from 'dotenv';
 
-// Load env vars BEFORE importing the service (which initializes Supabase immediately)
-dotenv.config({ path: '.env.local' });
+import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 
-async function main() {
-    console.log("Running manual news ingestion...");
-    // Dynamic import to ensure env vars are loaded
-    const { fetchAndIngestNews } = await import('../src/services/news.service');
+// Load .env.local if it exists
+const envLocalPath = path.resolve(process.cwd(), '.env.local');
+if (fs.existsSync(envLocalPath)) {
+    console.log("Loading .env.local");
+    dotenv.config({ path: envLocalPath });
+} else {
+    console.log("Loading .env");
+    dotenv.config();
+}
 
+async function run() {
+    console.log("Starting manual ingestion...");
     try {
+        // Dynamic import to ensure env vars are loaded before service initialization
+        const { fetchAndIngestNews } = await import('../src/services/news.service');
         const count = await fetchAndIngestNews();
-        console.log(`Successfully ingested ${count} items.`);
+        console.log(`Ingestion finished. Count: ${count}`);
     } catch (error) {
         console.error("Ingestion failed:", error);
+        process.exit(1);
     }
 }
 
-main();
+run();

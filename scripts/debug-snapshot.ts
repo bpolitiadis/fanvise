@@ -8,7 +8,7 @@ async function debug() {
     console.log("Starting diagnostic roster check...");
 
     const leagueId = process.env.NEXT_PUBLIC_ESPN_LEAGUE_ID!;
-    const teamId = "1"; // Default based on previous logs
+    const teamId = "13"; // Updated to Christos Koutoulas's team ID
 
     try {
         console.log(`Building snapshot for League: ${leagueId}, Team: ${teamId}`);

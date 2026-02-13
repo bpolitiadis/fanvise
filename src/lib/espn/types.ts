@@ -62,6 +62,8 @@ export interface EspnPlayer {
     jersey?: string;
     stats?: EspnPlayerStats[];
     ownership?: EspnPlayerOwnership;
+    seasonOutlook?: string;
+    lastNewsDate?: number;
 }
 
 export interface EspnKonaPlayerEntry {

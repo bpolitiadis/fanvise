@@ -30,6 +30,13 @@ export default defineConfig({
             name: 'chromium',
             use: { ...devices['Desktop Chrome'] },
         },
+        {
+            name: 'api',
+            testDir: './tests/api',
+            use: {
+                baseURL: 'http://localhost:3000',
+            }
+        },
     ],
 
     /* Run your local dev server before starting the tests */
