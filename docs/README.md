@@ -29,6 +29,9 @@ Deep dives into the system architecture and implementation details.
 ### Audits & Roadmaps
 *   **[Codebase Audit](./technical/Audit_and_Roadmap.md)**: Current state assessment and refactoring goals.
 *   **[Data Audit](./technical/Data_Audit_and_Roadmap.md)**: Review of data integrity and ingestion pipelines.
+*   **[AI Quality Audit](./technical/AI_Quality_Audit.md)**: RAG reliability audit, golden dataset design, and deterministic prompt hardening plan.
+*   **[Architecture Review (2026-02-13)](./technical/Architecture_Review_2026-02-13.md)**: Backend architecture review, blocking/correctness findings, and caching strategy.
+*   **[Security Audit (2026-02-13)](./technical/Security_Audit_Report_2026-02-13.md)**: Threat model, tenant isolation, RLS, and chat endpoint hardening.
 
 ## AI QA Evaluation
 

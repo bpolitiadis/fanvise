@@ -27,7 +27,8 @@ The **Central Brain** of the application. It orchestrates the entire "FanVise St
 
 A thin controller layer that receives user input and delegates execution to the `Intelligence Service`.
 -   **Responsibility**: Request validation, rate limiting, and response streaming.
--   **Logic**: **None**. All business logic is now encapsulated in the Intelligence Service.
+-   **Perspective authorization**: League/team context is validated server-side via `authorizePerspectiveScope` (`src/utils/auth/perspective-authorization.ts`). Only authorized or allowed public fallback perspectives are passed to the Intelligence Service; see [Security Audit](./Security_Audit_Report_2026-02-13.md) for threat model and hardening.
+-   **Stream robustness**: A heartbeat token is sent immediately so clients/proxies do not time out during slow context assembly or local model boot.
 -   **Eval Observability (Dev Only)**: when `evalMode=true` and `NODE_ENV=development`, the route can return `debug_context` for black-box faithfulness evaluation.
 
 ## Key Services
