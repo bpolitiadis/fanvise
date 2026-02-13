@@ -9,16 +9,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-
-export type ChatLanguage = "en" | "el";
-
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-  feedback?: "up" | "down" | null;
-}
+import type { ChatMessage, ChatLanguage } from '@/types/ai';
+export type { ChatMessage, ChatLanguage };
+import { createClient } from '@/utils/supabase/client';
+const supabase = createClient();
 
 export interface Conversation {
   id: string;

@@ -22,9 +22,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePerspective } from "@/lib/perspective-context";
 import {
   useChatHistory,
-  type ChatLanguage,
-  type ChatMessage,
 } from "@/components/chat/chat-history-context";
+import type { ChatLanguage, ChatMessage } from "@/types/ai";
 
 interface ToastState {
   id: string;
@@ -137,8 +136,8 @@ export function ChatInterface() {
           role: message.role,
           content: message.content,
         })),
-        activeTeamId,
-        activeLeagueId,
+        activeTeamId: (activeTeamId === "null" || !activeTeamId) ? undefined : activeTeamId,
+        activeLeagueId: (activeLeagueId === "null" || !activeLeagueId) ? undefined : activeLeagueId,
         teamName: activeTeam?.manager || "Unknown Team",
         language: responseLanguage,
       }),
@@ -275,7 +274,7 @@ export function ChatInterface() {
               Intelligence Hub
             </h1>
             <p className="max-w-md text-lg font-medium text-muted-foreground">
-              Strategic Consigliere online for{" "}
+              FanVise Strategist online for{" "}
               <span className="text-primary">{activeTeam?.manager ?? "your perspective"}</span>.
             </p>
           </div>
@@ -289,7 +288,7 @@ export function ChatInterface() {
             <div className="mr-2 hidden items-center gap-2 border-r border-primary/10 px-4 py-2 sm:flex">
               <Sparkles className="h-4 w-4 text-primary" />
               <span className="text-xs font-bold uppercase tracking-widest text-primary/70">
-                Savant
+                Strategist
               </span>
             </div>
             <Input
@@ -315,58 +314,7 @@ export function ChatInterface() {
             className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
             onClick={() =>
               handleQuickAction(
-                "Identify the top 3 streaming priorities for the next 48 hours. Focus on players who exploit my schedule density advantage and fill my weakest positions. Reference our scoring settings to justify the picks."
-              )
-            }
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/10 text-yellow-500 group-hover:bg-yellow-500/20">
-              <Zap className="h-4 w-4" />
-            </div>
-            <div className="flex flex-col items-start text-left">
-              <span className="text-sm font-bold">Waiver Advice</span>
-              <span className="text-[11px] text-muted-foreground">Find high-value streamers</span>
-            </div>
-          </Button>
-          <Button
-            variant="outline"
-            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
-            onClick={() =>
-              handleQuickAction(
-                "Evaluate my current roster for potential trade candidates. Who is overperforming their draft value or season averages that I should sell high? Suggest 2-3 target players from other teams that would improve my positional depth."
-              )
-            }
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500 group-hover:bg-blue-500/20">
-              <TrendingUp className="h-4 w-4" />
-            </div>
-            <div className="flex flex-col items-start text-left">
-              <span className="text-sm font-bold">Trade Audit</span>
-              <span className="text-[11px] text-muted-foreground">Identify sell-high candidates</span>
-            </div>
-          </Button>
-          <Button
-            variant="outline"
-            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
-            onClick={() =>
-              handleQuickAction(
-                "Break down my current matchup. Given the game volume difference and current score, what is my win probability? Suggest one 'must-start' and one 'potential sit' based on recent performance trends and news."
-              )
-            }
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20">
-              <BarChart3 className="h-4 w-4" />
-            </div>
-            <div className="flex flex-col items-start text-left">
-              <span className="text-sm font-bold">Matchup Prep</span>
-              <span className="text-[11px] text-muted-foreground">Win the 4th quarter</span>
-            </div>
-          </Button>
-          <Button
-            variant="outline"
-            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
-            onClick={() =>
-              handleQuickAction(
-                "Conduct a full roster audit. Identify my 3 biggest vulnerabilities (injuries, inconsistent performers, or positional gaps). For each, suggest a specific action—whether a waiver move, trade, or rotation change—using real-time intelligence."
+                "Perform a comprehensive audit of my team and roster. Give me a full overview including best and worst performers, a complete injury report, and potential streaming options. Also, include my current score, league standings, and matchup status."
               )
             }
           >
@@ -374,16 +322,35 @@ export function ChatInterface() {
               <Activity className="h-4 w-4" />
             </div>
             <div className="flex flex-col items-start text-left">
-              <span className="text-sm font-bold">Roster Audit</span>
-              <span className="text-[11px] text-muted-foreground">Fix your vulnerabilities</span>
+              <span className="text-sm font-bold">Team Audit</span>
+              <span className="text-[11px] text-muted-foreground">Full roster & standings overview</span>
             </div>
           </Button>
+
           <Button
             variant="outline"
-            className="group col-span-1 h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5 sm:col-span-2"
+            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
             onClick={() =>
               handleQuickAction(
-                "Analyze the rosters of all other teams in the league. Which team has a surplus of players in a position where I am weak? Propose a fair trade involving players from my roster and theirs that addresses both teams' needs."
+                "Provide a deep-dive review of my current matchup. Compare best/worst performers from both teams, track total games played vs. remaining, and suggest available healthy free agents to stream to secure the win."
+              )
+            }
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20">
+              <BarChart3 className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-sm font-bold">Matchup Review</span>
+              <span className="text-[11px] text-muted-foreground">Win the active week</span>
+            </div>
+          </Button>
+
+          <Button
+            variant="outline"
+            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
+            onClick={() =>
+              handleQuickAction(
+                "Identify the 10 best healthy or DTD free agents available. Compare their positions with my team's needs, suggest specific drop candidates to make room, and justify each recommendation with the latest news and player outlooks."
               )
             }
           >
@@ -391,8 +358,26 @@ export function ChatInterface() {
               <Search className="h-4 w-4" />
             </div>
             <div className="flex flex-col items-start text-left">
-              <span className="text-sm font-bold">Trade Scouter</span>
-              <span className="text-[11px] text-muted-foreground">Find the perfect trade partner</span>
+              <span className="text-sm font-bold">Waiver Research</span>
+              <span className="text-[11px] text-muted-foreground">Find top available talent</span>
+            </div>
+          </Button>
+
+          <Button
+            variant="outline"
+            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
+            onClick={() =>
+              handleQuickAction(
+                "Check my team for any injured or Day-to-Day (DTD) players. Fetch the latest reports on their return timelines, injury progress, and status updates. Suggest how to optimize my IR slots and if any injured players are safe to drop or need immediate coverage."
+              )
+            }
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/10 text-yellow-500 group-hover:bg-yellow-500/20">
+              <Zap className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-sm font-bold">Injury Report</span>
+              <span className="text-[11px] text-muted-foreground">Return timelines & IR optimization</span>
             </div>
           </Button>
         </div>
@@ -453,10 +438,10 @@ export function ChatInterface() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={
+                placeholder={
                 responseLanguage === "el"
-                  ? "Υποβολή ερωτήματος στο Savant..."
-                  : "Submit inquiry to Savant..."
+                  ? "Υποβολή ερωτήματος στον Strategist..."
+                  : "Submit inquiry to Strategist..."
               }
               className="h-12 flex-1 rounded-none border-0 px-4 text-base font-medium shadow-none focus-visible:ring-0"
             />

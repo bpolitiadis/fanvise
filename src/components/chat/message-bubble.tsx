@@ -21,7 +21,7 @@ import {
 import { motion } from "framer-motion";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import type { ChatMessage } from "@/components/chat/chat-history-context";
+import type { ChatMessage } from "@/types/ai";
 
 interface MessageBubbleProps {
   message: ChatMessage;

@@ -26,10 +26,10 @@
    */
 
   /* 
-   * FUTURE TEAL (#0d9488)
-   * Represents: The AI / Intelligence / The "Savant"
+   * CYBER JUMPMAN BLUE (#5593f7)
+   * Represents: The AI / Intelligence / The "Strategist"
    * Usage: Primary Buttons, "Thinking" States, Active Navigation.
-   * Logic: A cool, futuristic tone that contrasts sharply with the warm orange.
+   * Logic: A high-energy, tech-forward blue (refined for better legibility).
    */
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
@@ -126,8 +126,8 @@
     --foreground: 217 33% 17%;
     /* #1e293b - Ink Black */
 
-    --primary: 175 84% 32%;
-    /* #0d9488 - Future Teal */
+    --primary: 217 91% 65%;
+    /* #5593f7 - Cyber Jumpman Blue (Refined) */
     --primary-foreground: 0 0% 100%;
 
     --secondary: 21 90% 48%;
@@ -147,8 +147,8 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 175 84% 32%;
-    /* Focus ring uses Main Brand Teal */
+    --ring: 217 91% 65%;
+    /* Focus ring uses Main Brand Blue */
 
     --popover: 0 0% 100%;
     --popover-foreground: 217 33% 17%;
@@ -168,8 +168,8 @@
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
-    --primary: 175 84% 32%;
-    /* Teal persists as the primary guide */
+    --primary: 217 91% 65%;
+    /* Blue persists as the primary guide */
     --primary-foreground: 210 40% 98%;
 
     --secondary: 21 90% 48%;
@@ -187,7 +187,7 @@
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 175 84% 32%;
+    --ring: 217 91% 65%;
 
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
