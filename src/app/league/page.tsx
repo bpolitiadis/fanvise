@@ -5,12 +5,59 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Activity, Users } from "lucide-react";
+import { Activity, CalendarClock, Users } from "lucide-react";
 import { getStatName } from "@/lib/espn/constants";
 import { MainLayout } from "@/components/layout/main-layout";
 import { cn } from "@/lib/utils";
 import { Team } from "@/lib/perspective-context";
 
+type DraftValue = string | number | boolean | null | undefined;
+
+const toDraftState = (value: DraftValue) => {
+    if (value === true) return "Yes";
+    if (value === false) return "No";
+    if (value === null || value === undefined || value === "") return "N/A";
+    return String(value);
+};
+
+const toDraftDate = (value: DraftValue) => {
+    if (value === null || value === undefined || value === "") return null;
+    const raw = Number(value);
+    const timestamp =
+        Number.isFinite(raw)
+            ? (raw > 1_000_000_000_000 ? raw : raw * 1000)
+            : (typeof value === "string" ? value : null);
+    if (timestamp === null) return null;
+    const parsed = new Date(timestamp);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    });
+};
+
+const buildDraftSummary = (draftDetail?: Record<string, unknown>) => {
+    if (!draftDetail || typeof draftDetail !== "object") return [];
+
+    const detail = draftDetail as Record<string, DraftValue>;
+    const dateValue =
+        toDraftDate(detail.draftDate) ||
+        toDraftDate(detail.date) ||
+        toDraftDate(detail.draftTime) ||
+        toDraftDate(detail.scheduledDate);
+
+    return [
+        { label: "Type", value: toDraftState(detail.type ?? detail.draftType ?? detail.format) },
+        { label: "Status", value: toDraftState(detail.status ?? detail.state ?? detail.inProgress) },
+        { label: "Rounds", value: toDraftState(detail.rounds ?? detail.totalRounds) },
+        { label: "Pick Time", value: toDraftState(detail.pickTimeLimit ?? detail.pickTimeSeconds) },
+        { label: "Auction Budget", value: toDraftState(detail.auctionBudget) },
+        { label: "Draft Date", value: dateValue ?? "N/A" },
+    ].filter((item) => item.value !== "N/A");
+};
 
 export default function LeaguePage() {
     const { activeTeam, activeLeague, isLoading, error } = usePerspective();
@@ -55,13 +102,14 @@ export default function LeaguePage() {
     }
 
     // Safely destructure after the check
-    const { name, season_id, scoring_settings, teams } = league;
+    const { name, season_id, scoring_settings, teams, draft_detail } = league;
     
     // Calculate total points stats count
     const scoringItems = (scoring_settings as unknown as { scoringItems: { statId: number; points: number }[] })?.scoringItems || [];
     
     // Filter out items with 0 points
     const activeScoringRules = scoringItems.filter((rule) => rule.points !== 0);
+    const draftSummary = buildDraftSummary(draft_detail);
 
     return (
         <MainLayout>
@@ -69,13 +117,46 @@ export default function LeaguePage() {
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b pb-8">
                     <div className="space-y-1">
-                        <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">{name}</h1>
+                        <h1 className="text-4xl font-extrabold tracking-tight bg-linear-to-r from-primary to-primary/60 bg-clip-text text-transparent">{name}</h1>
                         <p className="text-muted-foreground text-lg font-medium">Season {season_id} Intel</p>
                     </div>
                     <Badge variant="secondary" className="text-sm px-6 py-2 border shadow-sm">
                        {teams?.length || 0} Managers Active
                     </Badge>
                 </div>
+
+                {/* Draft Details */}
+                <section className="space-y-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500">
+                            <CalendarClock className="w-5 h-5" />
+                        </div>
+                        <h2 className="text-2xl font-bold tracking-tight">Draft Details</h2>
+                    </div>
+                    <Card className="border-border/50 bg-card/30 shadow-inner">
+                        <CardContent className="pt-6">
+                            {draftSummary.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {draftSummary.map((item) => (
+                                        <div
+                                            key={item.label}
+                                            className="rounded-xl border border-border/40 bg-background/50 p-4"
+                                        >
+                                            <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
+                                                {item.label}
+                                            </p>
+                                            <p className="mt-1 text-sm font-bold text-foreground">{item.value}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    Draft data has not been synced yet for this league.
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </section>
 
                 {/* Scoring Settings */}
                 <section className="space-y-4">

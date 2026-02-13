@@ -272,10 +272,14 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
         }
 
         const contentText = cleanContent(item.contentSnippet || item.title || "");
-        const [intelligence, embedding] = await Promise.all([
-            extractIntelligence(contentText),
-            getEmbedding(`${item.title} ${contentText}`)
-        ]);
+        const intelligencePromise = extractIntelligence(contentText);
+        const embeddingPromise = getEmbedding(`${item.title} ${contentText}`)
+            .catch((embeddingError: unknown) => {
+                const message = embeddingError instanceof Error ? embeddingError.message : String(embeddingError);
+                console.warn(`[News Service] Embedding generation failed, continuing without vector: ${message}`);
+                return null;
+            });
+        const [intelligence, embedding] = await Promise.all([intelligencePromise, embeddingPromise]);
 
         // 4. Gatekeeper - Disabled as AI does not return trust_level currently
         // if (intelligence.trust_level < (FEEDS.find(f => f.source === source)?.trust_level || 1)) {

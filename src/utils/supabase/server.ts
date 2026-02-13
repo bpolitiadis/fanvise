@@ -31,9 +31,17 @@ export async function createClient() {
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export function createAdminClient() {
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseKey) {
+        throw new Error('Supabase admin key is missing. Set SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY.')
+    }
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        console.warn('[Supabase] SUPABASE_SERVICE_ROLE_KEY missing. Falling back to anon key for admin client.')
+    }
+
     return createSupabaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        supabaseKey,
         {
             auth: {
                 autoRefreshToken: false,

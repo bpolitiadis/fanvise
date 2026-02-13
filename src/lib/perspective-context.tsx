@@ -19,6 +19,7 @@ export interface League {
   season_id?: string
   scoring_settings: ScoringSettings
   roster_settings: RosterSlots
+  draft_detail?: Record<string, unknown>
   last_sync?: string
   teams?: Team[] 
 }
