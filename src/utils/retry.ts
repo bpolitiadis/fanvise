@@ -20,15 +20,29 @@ export async function withRetry<T>(
     maxRetries: number = 4, // Increased from 3
     initialDelay: number = 2000 // Increased from 1000
 ): Promise<T> {
-    let lastError: any;
+    let lastError: unknown;
+
+    const getStatus = (error: unknown): number => {
+        if (typeof error !== 'object' || error === null) return 0;
+        const maybe = error as { status?: unknown; statusCode?: unknown };
+        if (typeof maybe.status === 'number') return maybe.status;
+        if (typeof maybe.statusCode === 'number') return maybe.statusCode;
+        return 0;
+    };
+
+    const getMessage = (error: unknown): string => {
+        if (error instanceof Error) return error.message;
+        if (typeof error === 'string') return error;
+        return '';
+    };
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             return await fn();
-        } catch (error: any) {
+        } catch (error: unknown) {
             lastError = error;
-            const status = error.status || error.statusCode || 0;
-            const message = error.message || '';
+            const status = getStatus(error);
+            const message = getMessage(error);
             const isRateLimited = status === 429 || message.includes('429');
 
             if (isRateLimited) {

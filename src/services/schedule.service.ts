@@ -1,6 +1,5 @@
 import { createClient, createAdminClient } from '@/utils/supabase/server';
 import { EspnClient } from '@/lib/espn/client';
-import { ESPN_PRO_TEAM_MAP } from '@/lib/espn/constants';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export interface NbaGame {

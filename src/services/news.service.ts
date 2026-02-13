@@ -15,10 +15,29 @@
  */
 import Parser from 'rss-parser';
 import { createClient } from '@supabase/supabase-js'; // Use direct client for service role
-import { GoogleGenerativeAI, type GenerativeModel } from "@google/generative-ai";
-import { withRetry, sleep } from '@/utils/retry';
+import { sleep } from '@/utils/retry';
 
 const parser = new Parser();
+
+interface SearchNewsItem {
+    id?: string;
+    title?: string | null;
+    url?: string | null;
+    content?: string | null;
+    summary?: string | null;
+    published_at?: string | null;
+    source?: string | null;
+    player_name?: string | null;
+    sentiment?: string | null;
+    category?: string | null;
+    impact_backup?: string | null;
+    is_injury_report?: boolean | null;
+    injury_status?: string | null;
+    expected_return_date?: string | null;
+    impacted_player_ids?: string[] | null;
+    trust_level?: number | null;
+    similarity?: number | null;
+}
 
 export interface IntelligenceObject {
     player_name: string | null;
@@ -72,12 +91,36 @@ const extractIntelligence = async (text: string): Promise<IntelligenceObject> =>
     try {
         const { extractIntelligence: aiExtractIntelligence } = await import('./ai.service');
         const intelligence = await aiExtractIntelligence(prompt);
+        const normalizeSentiment = (value: unknown): IntelligenceObject['sentiment'] => {
+            if (value === 'POSITIVE' || value === 'NEGATIVE' || value === 'NEUTRAL') return value;
+            return 'NEUTRAL';
+        };
+        const normalizeCategory = (value: unknown): IntelligenceObject['category'] => {
+            if (
+                value === 'Injury' || value === 'Trade' || value === 'Lineup' ||
+                value === 'Performance' || value === 'Other' || value === 'General'
+            ) {
+                return value;
+            }
+            return 'Other';
+        };
+
         return {
-            ...intelligence,
+            player_name: typeof intelligence.player_name === 'string' ? intelligence.player_name : null,
+            sentiment: normalizeSentiment(intelligence.sentiment),
+            category: normalizeCategory(intelligence.category),
+            impact_backup: typeof intelligence.impact_backup === 'string' ? intelligence.impact_backup : null,
+            is_injury_report: Boolean(intelligence.is_injury_report),
+            injury_status: typeof intelligence.injury_status === 'string' ? intelligence.injury_status : null,
+            expected_return_date: typeof intelligence.expected_return_date === 'string' ? intelligence.expected_return_date : null,
+            impacted_player_ids: Array.isArray(intelligence.impacted_player_ids)
+                ? intelligence.impacted_player_ids.filter((id): id is string => typeof id === 'string')
+                : [],
             trust_level: 1 // Default, overridden by feed
         };
-    } catch (error: any) {
-        console.warn("[News Service] Intelligence extraction failed:", error.message);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("[News Service] Intelligence extraction failed:", message);
         return {
             player_name: null,
             sentiment: 'NEUTRAL',
@@ -114,11 +157,65 @@ const NBA_KEYWORDS = [
     'Triple-double', 'Double-double', 'Free agent', 'Trade deadline', 'Injury report', 'GTD', 'Out indefinitely', 'Hardship exception', 'Two-way contract'
 ];
 
+const STATUS_KEYWORDS = ['out', 'gtd', 'day-to-day', 'questionable', 'injury', 'ruled out', 'available', 'minutes restriction', 'doubtful', 'ofs'];
+const STOP_WORDS = new Set([
+    'the', 'and', 'for', 'with', 'from', 'that', 'this', 'what', 'when', 'where', 'should', 'would', 'could',
+    'about', 'into', 'your', 'my', 'our', 'you', 'are', 'who', 'tonight', 'today', 'week', 'news', 'player'
+]);
+
+const toIsoDaysAgo = (days: number) => new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString();
+
+const sanitizeSearchTerm = (term: string) => term.replace(/[^a-zA-Z0-9\- ]/g, '').trim();
+
+const getQueryTerms = (query: string): string[] => {
+    const normalized = query.toLowerCase();
+    const baseTerms = normalized
+        .split(/\s+/)
+        .map(sanitizeSearchTerm)
+        .filter(t => t.length >= 3 && !STOP_WORDS.has(t));
+    const statusTerms = STATUS_KEYWORDS.filter(status => normalized.includes(status));
+    return Array.from(new Set([...statusTerms, ...baseTerms])).slice(0, 8);
+};
+
+const textHitScore = (text: string, terms: string[]) => {
+    if (!text || terms.length === 0) return 0;
+    const normalized = text.toLowerCase();
+    const hits = terms.reduce((count, term) => (normalized.includes(term) ? count + 1 : count), 0);
+    return hits / terms.length;
+};
+
+const computeHybridScore = (item: SearchNewsItem, terms: string[]) => {
+    const now = Date.now();
+    const publishedAt = item.published_at ? new Date(item.published_at).getTime() : now;
+    const ageHours = Math.max(0, (now - publishedAt) / (1000 * 60 * 60));
+    const recencyScore = Math.max(0, 1 - (ageHours / (24 * 7))); // 0 after ~7 days
+    const trustScore = Math.min(1, Math.max(0, (item.trust_level || 1) / 5));
+    const vectorScore = Math.max(0, Math.min(1, item.similarity || 0));
+    const keywordText = `${item.title || ''} ${item.summary || ''} ${item.content || ''} ${item.player_name || ''} ${item.injury_status || ''}`;
+    const keywordScore = textHitScore(keywordText, terms);
+    return (vectorScore * 0.65) + (keywordScore * 0.25) + (recencyScore * 0.07) + (trustScore * 0.03);
+};
+
+const normalizeSearchRow = (row: unknown): SearchNewsItem => {
+    if (!row || typeof row !== 'object') return {};
+    return row as SearchNewsItem;
+};
+
+interface RssIngestItem {
+    title?: string;
+    link?: string;
+    contentSnippet?: string;
+    content?: string;
+    isoDate?: string;
+    guid?: string;
+}
+
 // --- Mapping Utilities ---
-function mapEspnArticleToRssItem(article: any) {
+function mapEspnArticleToRssItem(article: Record<string, unknown>): RssIngestItem {
+    const links = article.links as { web?: { href?: string }; api?: { self?: { href?: string } } } | undefined;
     return {
         title: article.headline as string,
-        link: (article.links?.web?.href || article.links?.api?.self?.href) as string,
+        link: links?.web?.href || links?.api?.self?.href,
         contentSnippet: article.description as string,
         content: article.description as string,
         isoDate: article.published as string
@@ -126,7 +223,7 @@ function mapEspnArticleToRssItem(article: any) {
 }
 
 // --- Processing Utilities ---
-async function processItem(item: any, source: string, watchlist: string[], activeKeywords: string[], dryRun: boolean = false) {
+async function processItem(item: RssIngestItem, source: string, watchlist: string[], activeKeywords: string[], dryRun: boolean = false) {
     if (!item.title || !item.link) return false;
 
     // 1. Fast Keyword Check
@@ -275,8 +372,9 @@ export async function backfillNews(watchlist: string[] = [], pages: number = 3) 
             for (let i = 0; i < articles.length; i += 2) {
                 const batch = articles.slice(i, i + 2);
                 const results = await Promise.all(
-                    batch.map((article: any) => {
-                        const item = mapEspnArticleToRssItem(article);
+                    batch.map((article: unknown) => {
+                        if (!article || typeof article !== 'object') return false;
+                        const item = mapEspnArticleToRssItem(article as Record<string, unknown>);
                         return processItem(item, 'ESPN', watchlist, activeKeywords);
                     })
                 );
@@ -299,25 +397,81 @@ export async function searchNews(query: string, limit = 15) {
     }
 
     try {
-        // 1. Embed Query
+        // 1. Embed query for vector retrieval
         const embedding = await getEmbedding(query);
         console.log(`Searching news with embedding (dim: ${embedding.length}) for: "${query.substring(0, 30)}..."`);
 
-        // 2. Search via RPC (extended to 14 days for long-term injury tracking)
-        const { data, error } = await supabase.rpc('match_news_documents', {
+        // 2. Vector retrieval via RPC (14-day window for long-term injury tracking)
+        const { data: vectorData, error: vectorError } = await supabase.rpc('match_news_documents', {
             query_embedding: embedding,
             match_threshold: 0.25, // Slightly lower threshold to be more inclusive
-            match_count: limit,
+            match_count: Math.max(limit * 2, 20),
             days_back: 14
         });
 
-        if (error) {
-            console.error("Supabase RPC match_news_documents error:", error);
-            return [];
+        if (vectorError) {
+            console.error("Supabase RPC match_news_documents error:", vectorError);
         }
 
-        console.log(`RAG found ${data?.length || 0} relevant news items.`);
-        return data || [];
+        // 3. Lightweight lexical retrieval fallback (hybrid behavior without DB migration)
+        const terms = getQueryTerms(query);
+        const cutoff = toIsoDaysAgo(14);
+        let lexicalRows: SearchNewsItem[] = [];
+
+        if (terms.length > 0) {
+            const orClauses: string[] = [];
+            for (const term of terms) {
+                if (!term) continue;
+                orClauses.push(`title.ilike.%${term}%`);
+                orClauses.push(`summary.ilike.%${term}%`);
+                orClauses.push(`content.ilike.%${term}%`);
+                orClauses.push(`player_name.ilike.%${term}%`);
+                orClauses.push(`injury_status.ilike.%${term}%`);
+            }
+
+            if (orClauses.length > 0) {
+                const { data: lexicalData, error: lexicalError } = await supabase
+                    .from('news_items')
+                    .select('id,title,url,content,summary,published_at,source,player_name,sentiment,category,impact_backup,is_injury_report,injury_status,expected_return_date,impacted_player_ids,trust_level')
+                    .gt('published_at', cutoff)
+                    .or(orClauses.join(','))
+                    .order('published_at', { ascending: false })
+                    .limit(Math.max(limit * 3, 24));
+
+                if (lexicalError) {
+                    console.error("Supabase lexical news search error:", lexicalError);
+                } else {
+                    lexicalRows = (lexicalData || []).map(normalizeSearchRow);
+                }
+            }
+        }
+
+        const vectorRows = (vectorData || []).map(normalizeSearchRow);
+        const merged = new Map<string, SearchNewsItem>();
+
+        for (const item of [...vectorRows, ...lexicalRows]) {
+            const key = item.id || item.url || `${item.title}-${item.published_at}`;
+            if (!key) continue;
+            const existing = merged.get(key);
+            if (!existing) {
+                merged.set(key, item);
+                continue;
+            }
+            merged.set(key, {
+                ...existing,
+                ...item,
+                similarity: Math.max(existing.similarity || 0, item.similarity || 0),
+            });
+        }
+
+        const ranked = Array.from(merged.values())
+            .map(item => ({ item, score: computeHybridScore(item, terms) }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit)
+            .map(({ item }) => item);
+
+        console.log(`Hybrid RAG found ${ranked.length} items (vector=${vectorRows.length}, lexical=${lexicalRows.length}).`);
+        return ranked;
     } catch (err) {
         console.error("Error in searchNews:", err);
         return [];

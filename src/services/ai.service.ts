@@ -21,9 +21,8 @@ import {
     AIStructuredResponseSchema,
     type AIStructuredResponse,
     type ChatMessage,
-    type SupportedLanguage
 } from '@/types/ai';
-import { withRetry, sleep } from '@/utils/retry';
+import { withRetry } from '@/utils/retry';
 
 // ============================================================================
 // Configuration
@@ -66,7 +65,7 @@ export interface EmbeddingProvider {
  * Interface for Intelligence Providers
  */
 export interface IntelligenceProvider {
-    extractIntelligence(prompt: string): Promise<any>;
+    extractIntelligence(prompt: string): Promise<Record<string, unknown>>;
 }
 
 // ============================================================================
@@ -149,7 +148,9 @@ async function generateGeminiStream(
         parts: [{ text: msg.content }],
     }));
 
-    const chat = model.startChat({ history: geminiHistory as any });
+    const chat = model.startChat({
+        history: geminiHistory as NonNullable<Parameters<typeof model.startChat>[0]>["history"],
+    });
 
     const result = await withRetry(() => chat.sendMessageStream(message));
 
@@ -361,7 +362,7 @@ export async function generateStructuredResponse(
  * Gemini Intelligence Provider
  */
 class GeminiIntelligenceProvider implements IntelligenceProvider {
-    async extractIntelligence(prompt: string): Promise<any> {
+    async extractIntelligence(prompt: string): Promise<Record<string, unknown>> {
         if (!genAI) throw new Error('Gemini API key not configured');
 
         const generationModelCandidates = [
@@ -370,7 +371,7 @@ class GeminiIntelligenceProvider implements IntelligenceProvider {
             "gemini-1.5-flash",
         ];
 
-        let lastError: any;
+        let lastError: unknown;
         for (const modelName of generationModelCandidates) {
             try {
                 const model = genAI.getGenerativeModel({ model: modelName });
@@ -380,7 +381,7 @@ class GeminiIntelligenceProvider implements IntelligenceProvider {
                         generationConfig: { responseMimeType: "application/json" }
                     });
                     const text = response.response.text();
-                    return JSON.parse(text);
+                    return JSON.parse(text) as Record<string, unknown>;
                 });
                 return result;
             } catch (error) {
@@ -402,7 +403,7 @@ class OllamaIntelligenceProvider implements IntelligenceProvider {
         this.model = model;
     }
 
-    async extractIntelligence(prompt: string): Promise<any> {
+    async extractIntelligence(prompt: string): Promise<Record<string, unknown>> {
         console.log(`[AI Service] Using local Ollama model: ${this.model}`);
 
         const response = await fetch('http://localhost:11434/api/generate', {
@@ -423,15 +424,15 @@ class OllamaIntelligenceProvider implements IntelligenceProvider {
             throw new Error(`Ollama Intelligence Error: ${response.status} ${response.statusText}`);
         }
 
-        const json = await response.json();
+        const json = await response.json() as { response?: string };
         try {
             // Ollama responses sometimes contain think tags if using DeepSeek R1
-            let content = json.response;
+            let content = json.response ?? "";
             if (content.includes('</think>')) {
                 content = content.split('</think>').pop()?.trim() || content;
             }
-            return JSON.parse(content);
-        } catch (error) {
+            return JSON.parse(content) as Record<string, unknown>;
+        } catch {
             console.error('[AI Service] Failed to parse JSON from Ollama:', json.response);
             throw new Error('Invalid JSON response from local AI');
         }
@@ -451,7 +452,7 @@ export function getIntelligenceProvider(): IntelligenceProvider {
 /**
  * High-level function to extract structured intelligence using the configured provider.
  */
-export async function extractIntelligence(prompt: string): Promise<any> {
+export async function extractIntelligence(prompt: string): Promise<Record<string, unknown>> {
     const provider = getIntelligenceProvider();
     return provider.extractIntelligence(prompt);
 }

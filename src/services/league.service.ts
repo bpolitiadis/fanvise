@@ -13,10 +13,11 @@
  * @module services/league
  */
 
-import { createClient, createAdminClient } from '@/utils/supabase/server';
+import { createAdminClient } from '@/utils/supabase/server';
 import { EspnClient } from '@/lib/espn/client';
 import { PlayerService } from '@/services/player.service';
 import { withRetry } from '@/utils/retry';
+import { unstable_cache } from 'next/cache';
 import type {
     Team as TeamContext,
     Player as PlayerContext,
@@ -33,6 +34,60 @@ import type {
 import { getPositionName } from '@/lib/espn/constants';
 
 // Core types now imported from @/types/league and @/types/fantasy
+type JsonObject = Record<string, unknown>;
+
+interface EspnMatchupTeam {
+    teamId?: number;
+    totalPoints?: number;
+}
+
+interface EspnScheduleMatchup {
+    away?: EspnMatchupTeam;
+    home?: EspnMatchupTeam;
+    matchupPeriodId?: number;
+    winner?: string;
+}
+
+interface EspnSeasonStats {
+    statSourceId?: number;
+    statSplitTypeId?: number;
+    seasonId?: number | string;
+    appliedAverage?: number;
+    appliedTotal?: number;
+    stats?: Record<string, number>;
+}
+
+interface EspnPlayerDetails {
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    proTeamId?: number | string;
+    defaultPositionId?: number | string;
+    injuryStatus?: string;
+    injured?: boolean;
+    jersey?: string;
+    stats?: EspnSeasonStats[];
+    seasonOutlook?: string;
+    lastNewsDate?: string;
+}
+
+interface EspnRosterEntry {
+    playerId?: number | string;
+    playerPoolEntry?: {
+        player?: EspnPlayerDetails;
+    };
+}
+
+interface EspnTeam {
+    id?: number;
+    location?: string;
+    nickname?: string;
+    name?: string;
+    abbrev?: string;
+    roster?: { entries?: EspnRosterEntry[] };
+    rosterForCurrentScoringPeriod?: { entries?: EspnRosterEntry[] };
+    rosterForCurrentScoringPeriodString?: { entries?: EspnRosterEntry[] };
+}
 
 // ============================================================================
 // Database Functions
@@ -44,7 +99,7 @@ import { getPositionName } from '@/lib/espn/constants';
  * @param leagueId - The ESPN league ID
  * @returns The league data or null if not found
  */
-async function fetchLeague(leagueId: string): Promise<DbLeague | null> {
+async function fetchLeagueUncached(leagueId: string): Promise<DbLeague | null> {
     // Use Admin Client to bypass RLS policies and ensure the service can read league data
     const supabase = createAdminClient();
 
@@ -68,6 +123,12 @@ async function fetchLeague(leagueId: string): Promise<DbLeague | null> {
     return data as DbLeague;
 }
 
+const fetchLeague = unstable_cache(
+    async (leagueId: string): Promise<DbLeague | null> => fetchLeagueUncached(leagueId),
+    ['league-service-fetch-league'],
+    { revalidate: 60 }
+);
+
 /**
  * Upserts (inserts or updates) a league in the database.
  * 
@@ -85,9 +146,9 @@ export async function upsertLeague(
     scoringSettings: ScoringSettings,
     rosterSettings: RosterSlots,
     teams: DbTeam[],
-    draftDetail?: any,
-    positionalRatings?: any,
-    liveScoring?: any
+    draftDetail?: JsonObject,
+    positionalRatings?: JsonObject,
+    liveScoring?: JsonObject
 ): Promise<void> {
     // Use Admin Client for write operations to ensure system-level access
     const supabase = createAdminClient();
@@ -166,7 +227,7 @@ function toTeamContext(dbTeam: DbTeam, roster?: PlayerContext[]): TeamContext {
  * @param teamId - The team ID to find matchup for
  * @returns Matchup context or undefined if not found
  */
-async function fetchMatchupFromEspn(
+async function fetchMatchupFromEspnUncached(
     leagueId: string,
     teamId: string,
     seasonId: string
@@ -204,7 +265,7 @@ async function fetchMatchupFromEspn(
 
         const teamIdNum = parseInt(teamId);
         // Filter by BOTH team presence AND current matchup period
-        const currentMatchup = matchupData.schedule.find((m: any) =>
+        let currentMatchup = matchupData.schedule.find((m: EspnScheduleMatchup) =>
             (m.away?.teamId === teamIdNum || m.home?.teamId === teamIdNum) &&
             m.matchupPeriodId === currentPeriod
         );
@@ -212,10 +273,11 @@ async function fetchMatchupFromEspn(
         if (!currentMatchup) {
             console.warn(`[League Service] No matchup found for team ${teamId} in period ${currentPeriod}. Falling back to first available matchup.`);
             // Fallback to any matchup if current period not found (might happen if season ended or hasn't started)
-            const fallbackMatchup = matchupData.schedule.find((m: any) =>
+            const fallbackMatchup = matchupData.schedule.find((m: EspnScheduleMatchup) =>
                 m.away?.teamId === teamIdNum || m.home?.teamId === teamIdNum
             );
             if (!fallbackMatchup) return null;
+            currentMatchup = fallbackMatchup;
         }
 
         const isHome = currentMatchup.home?.teamId === teamIdNum;
@@ -226,14 +288,17 @@ async function fetchMatchupFromEspn(
         const opponentScore = opponentData?.totalPoints || 0;
 
         // Map roster data
-        const mapRoster = (rosterData: any, targetSeasonId: string): PlayerContext[] => {
+        const mapRoster = (
+            rosterData: { entries?: EspnRosterEntry[] } | null,
+            targetSeasonId: string
+        ): PlayerContext[] => {
             if (!rosterData?.entries || !Array.isArray(rosterData.entries)) return [];
-            return rosterData.entries.map((entry: any) => {
+            return rosterData.entries.map((entry: EspnRosterEntry) => {
                 const player = entry.playerPoolEntry?.player;
                 const stats = player?.stats || [];
 
                 // Find stats specifically for the target season
-                const seasonStats = stats.find((s: any) =>
+                const seasonStats = stats.find((s: EspnSeasonStats) =>
                     s.statSourceId === 0 &&
                     s.statSplitTypeId === 0 &&
                     String(s.seasonId) === targetSeasonId
@@ -265,7 +330,7 @@ async function fetchMatchupFromEspn(
 
         // Helper to get fresh team metadata from the top-level teams array
         const getTeamDetails = (tid: number) => {
-            const team = matchupData.teams?.find((t: any) => t.id === tid);
+            const team = matchupData.teams?.find((t: EspnTeam) => t.id === tid);
             if (!team) return { name: `Team ${tid}`, abbrev: '' };
             const name = (team.location && team.nickname) ? `${team.location} ${team.nickname}` : (team.name || `Team ${tid}`);
             return { name, abbrev: team.abbrev || '' };
@@ -279,7 +344,7 @@ async function fetchMatchupFromEspn(
 
         // Find roster entries in the top-level teams array (more reliable)
         const findRoster = (tid: number) => {
-            const team = matchupData.teams?.find((t: any) => t.id === tid);
+            const team = matchupData.teams?.find((t: EspnTeam) => t.id === tid);
             if (!team) {
                 console.warn(`[League Service] Team ${tid} not found in teams array!`);
                 return null;
@@ -315,11 +380,30 @@ async function fetchMatchupFromEspn(
     }
 }
 
+const fetchMatchupFromEspn = unstable_cache(
+    async (
+        leagueId: string,
+        teamId: string,
+        seasonId: string
+    ): ReturnType<typeof fetchMatchupFromEspnUncached> => fetchMatchupFromEspnUncached(leagueId, teamId, seasonId),
+    ['league-service-fetch-matchup'],
+    { revalidate: 45 }
+);
+
 // ============================================================================
 // Schedule Density Calculation
 // ============================================================================
 
 import { ScheduleService } from './schedule.service';
+
+const getGamesInRangeCached = unstable_cache(
+    async (startIso: string, endIso: string) => {
+        const scheduleService = new ScheduleService();
+        return scheduleService.getGamesInRange(new Date(startIso), new Date(endIso));
+    },
+    ['league-service-get-games-in-range'],
+    { revalidate: 21600 } // 6h
+);
 
 /**
  * Calculates schedule density for the current week.
@@ -339,8 +423,6 @@ async function calculateScheduleDensity(
 ): Promise<ScheduleContext | undefined> {
     if (!myTeam.roster) return undefined;
 
-    const scheduleService = new ScheduleService();
-
     // Define the time window: Today -> Today + 6 days
     const startDate = new Date();
     startDate.setHours(0, 0, 0, 0); // Normalize to start of day to catch early games (e.g. UTC midnight)
@@ -350,23 +432,10 @@ async function calculateScheduleDensity(
     endDate.setHours(23, 59, 59, 999); // Normalize to end of day
 
     try {
-        const games = await scheduleService.getGamesInRange(startDate, endDate);
+        const games = await getGamesInRangeCached(startDate.toISOString(), endDate.toISOString());
 
         // Helper to count games for a roster
         const countGames = (roster: PlayerContext[]) => {
-            let total = 0;
-            const teamIds = new Set(roster.map(p => parseInt(p.proTeam))); // proTeam is string ID
-
-            for (const game of games) {
-                if (teamIds.has(game.homeTeamId) || teamIds.has(game.awayTeamId)) {
-                    total++; // This counts "player-games". If I have 2 players in same game, it counts twice?
-                    // No, strict interpretation: density is "how many player-starts do I have available?"
-                }
-            }
-            // Wait, "Schedule Density" usually means "How many games does my TEAM play?" 
-            // OR "Total man-games available"?
-            // Let's refine: We want "Total Man-Games".
-
             let manGames = 0;
             for (const player of roster) {
                 const proTeamId = parseInt(player.proTeam);
@@ -396,6 +465,38 @@ async function calculateScheduleDensity(
         return undefined;
     }
 }
+
+const fetchFreeAgentsCached = unstable_cache(
+    async (
+        leagueId: string,
+        seasonId: string,
+        myRosterKey: string,
+        opponentRosterKey: string
+    ): Promise<PlayerContext[]> => {
+        const swid = process.env.ESPN_SWID;
+        const s2 = process.env.ESPN_S2;
+        const playerService = new PlayerService(
+            leagueId,
+            seasonId,
+            process.env.NEXT_PUBLIC_ESPN_SPORT || 'fba',
+            swid,
+            s2
+        );
+
+        const rawFreeAgents = await playerService.getTopFreeAgents(150);
+        const myPlayerIds = new Set(myRosterKey ? myRosterKey.split(',') : []);
+        const opponentPlayerIds = new Set(opponentRosterKey ? opponentRosterKey.split(',') : []);
+
+        return rawFreeAgents.filter((p) => {
+            if (myPlayerIds.has(p.id)) return false;
+            if (opponentPlayerIds.has(p.id)) return false;
+            if (p.isInjured) return false;
+            return true;
+        }).slice(0, 15);
+    },
+    ['league-service-fetch-free-agents'],
+    { revalidate: 300 }
+);
 
 // ============================================================================
 // Main API
@@ -495,38 +596,17 @@ export async function buildIntelligenceSnapshot(
     );
 
     // 5. Fetch Free Agents
-    // Use environment variables for authentication if needed (though PlayerService handles this internally if passed)
-    // We reuse the cookies from the environment or assume they are available if running in the same context
-    const swid = process.env.ESPN_SWID;
-    const s2 = process.env.ESPN_S2;
-    const playerService = new PlayerService(leagueId, league.season_id, process.env.NEXT_PUBLIC_ESPN_SPORT || 'fba', swid, s2);
-
     let freeAgents: PlayerContext[] = [];
     try {
-        console.log(`[League Service] Fetching top free agents for League ${leagueId}`);
-        // Fetch a larger pool candidates (150) to ensure we find healthy/unowned options
-        // Top 50 are often injured stars (e.g. AD, Jimmy Butler) 
-        const rawFreeAgents = await playerService.getTopFreeAgents(150);
-
-        // Create sets of owned player IDs for O(1) lookup
-        const myPlayerIds = new Set(myTeam.roster?.map(p => p.id) || []);
-        const opponentPlayerIds = new Set(opponent?.roster?.map(p => p.id) || []);
-
-        freeAgents = rawFreeAgents.filter(p => {
-            // Exclude if owned by me
-            if (myPlayerIds.has(p.id)) return false;
-
-            // Exclude if owned by opponent
-            if (opponentPlayerIds.has(p.id)) return false;
-
-            // Exclude if injured (unless day-to-day, but safer to exclude all for "streaming")
-            if (p.isInjured) return false;
-
-            return true;
-        }).slice(0, 15); // Return top 15 valid options
-
+        const myRosterKey = (myTeam.roster ?? []).map((p) => p.id).sort().join(',');
+        const opponentRosterKey = (opponent?.roster ?? []).map((p) => p.id).sort().join(',');
+        freeAgents = await fetchFreeAgentsCached(
+            leagueId,
+            league.season_id,
+            myRosterKey,
+            opponentRosterKey
+        );
         console.log(`[League Service] Filtered free agents: ${freeAgents.length} valid options found.`);
-
     } catch (faError) {
         console.error('[League Service] Failed to fetch free agents:', faError);
     }

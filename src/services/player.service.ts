@@ -1,7 +1,7 @@
 import { EspnClient } from '@/lib/espn/client';
 import { Player as PlayerContext } from '@/types/fantasy';
 import { getPositionName } from '@/lib/espn/constants';
-import { EspnPlayer, EspnKonaPlayerEntry } from '@/lib/espn/types';
+import { EspnKonaPlayerEntry } from '@/lib/espn/types';
 
 export class PlayerService {
     private client: EspnClient;
@@ -57,7 +57,7 @@ export class PlayerService {
             fullName: player.fullName || 'Unknown Player',
             proTeam: String(player.proTeamId || 0),
             position: getPositionName(player.defaultPositionId || 0),
-            injuryStatus: (player.injuryStatus as any) || 'ACTIVE',
+            injuryStatus: player.injuryStatus || 'ACTIVE',
             isInjured: player.injured || false,
             jersey: player.jersey,
             avgPoints: statsToUse?.appliedAverage || 0,
