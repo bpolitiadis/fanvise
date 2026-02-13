@@ -35,6 +35,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!**/.env.example
 
 # vercel
 .vercel
@@ -46,5 +47,8 @@ next-env.d.ts
 # audit
 /tmp_audit/
 
-# local scripts
+# local scripts (legacy; ops now in src/ops/)
 /scripts/
+
+# AI eval / telemetry
+.deepeval/
