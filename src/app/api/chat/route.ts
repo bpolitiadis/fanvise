@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateStrategicResponse, type IntelligenceOptions } from "@/services/intelligence.service";
-import type { ChatMessage } from "@/services/ai.service";
+import type { ChatMessage } from '@/types/ai';
 import type { SupportedLanguage } from "@/prompts/types";
 
 interface RequestMessage {
@@ -32,9 +32,9 @@ export async function POST(req: NextRequest) {
         const { messages, activeTeamId, activeLeagueId, language = 'en' } = body;
 
         if (!activeTeamId || !activeLeagueId) {
-            console.error(`[Chat API] ❌ MISSING CONTEXT IDS: Team: ${activeTeamId}, League: ${activeLeagueId}`);
+            console.warn(`[Chat API] Incoming request with MISSING perspective: Team: ${activeTeamId}, League: ${activeLeagueId}`);
         } else {
-            console.log(`[Chat API] ✅ Request Context: Team: ${activeTeamId}, League: ${activeLeagueId}`);
+            console.log(`[Chat API] Incoming request with perspective: Team: ${activeTeamId}, League: ${activeLeagueId}`);
         }
 
         // Separate history from current message to prevent duplication in AI context
@@ -43,8 +43,11 @@ export async function POST(req: NextRequest) {
 
         // Convert history to service format
         const history: ChatMessage[] = historyMessages.map((m) => ({
-            role: m.role === "user" ? "user" : "model",
+            id: crypto.randomUUID(),
+            role: m.role === "user" ? "user" : "assistant",
             content: m.content,
+            createdAt: new Date().toISOString(),
+            feedback: null
         }));
 
         // Generate streaming response using Intelligence Service

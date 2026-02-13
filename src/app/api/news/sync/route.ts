@@ -5,7 +5,7 @@ import { EspnClient } from "@/lib/espn/client";
 
 export async function POST(req: NextRequest) {
     try {
-        const { leagueId, teamId, backfill } = await req.json();
+        const { leagueId, teamId, backfill, limit, dryRun } = await req.json();
         const watchlist: string[] = [];
 
         if (leagueId && teamId) {
@@ -39,7 +39,10 @@ export async function POST(req: NextRequest) {
             const { backfillNews } = await import("@/services/news.service");
             count = await backfillNews(watchlist, 3); // Default 3 pages
         } else {
-            count = await fetchAndIngestNews(watchlist);
+            // Use provided limit or default (will be 50 in service)
+            // If limit is provided, ensure it's a number
+            const ingestionLimit = typeof limit === 'number' ? limit : undefined;
+            count = await fetchAndIngestNews(watchlist, ingestionLimit, dryRun);
         }
 
         return NextResponse.json({ success: true, count, watchlistSize: watchlist.length, backfill: !!backfill });
