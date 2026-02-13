@@ -1,8 +1,15 @@
 /**
  * FanVise AI Service
  * 
- * Centralized service for AI model interactions.
- * Supports both Google Gemini (cloud) and Ollama (local) backends.
+ * Centralized service for AI model interactions and abstracting provider complexity.
+ * 
+ * ARCHITECTURE NOTE:
+ * Uses a "Dual-Provider Strategy":
+ * 1. **Google Gemini (Cloud)**: Primary engine for high-reasoning tasks (Strategic Advice).
+ * 2. **Ollama (Local)**: Optional fallback or privacy-focused alternative for users 
+ *    running distinct local models (e.g., DeepSeek R1 for logic without data leakage).
+ * 
+ * This abstraction ensures the rest of the app doesn't care which brain is thinking.
  * 
  * @module services/ai
  */
@@ -173,19 +180,26 @@ async function generateOllamaStream(
     message: string,
     options: GenerateOptions = {}
 ): Promise<AsyncIterable<string>> {
-    // Convert to Ollama message format
-    const messages = history.map(msg => ({
+    // Build Ollama message array with proper role separation.
+    // CRITICAL FIX: Use Ollama's native `system` role for the intelligence context
+    // (league rosters, matchup scores, scoring settings, free agents, news).
+    // Previously, this was prepended as plain text into the user message, causing
+    // the model to lose the boundary between "what I should know" and "what I'm asked",
+    // resulting in the "I don't have access to your roster" fallback response.
+    const messages: Array<{ role: string; content: string }> = [];
+
+    if (options.systemInstruction) {
+        messages.push({ role: 'system', content: options.systemInstruction });
+    }
+
+    // Append conversation history
+    history.forEach(msg => messages.push({
         role: msg.role === 'model' ? 'assistant' : msg.role,
         content: msg.content,
     }));
 
-    // Prepend system instruction if provided
-    let finalMessage = message;
-    if (options.systemInstruction) {
-        finalMessage = `CONTEXT & INSTRUCTIONS:\n${options.systemInstruction}\n\nUSER QUERY: ${message}`;
-    }
-
-    messages.push({ role: 'user', content: finalMessage });
+    // Append current user query as a separate message
+    messages.push({ role: 'user', content: message });
 
     const response = await fetch(OLLAMA_URL, {
         method: 'POST',

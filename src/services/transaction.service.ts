@@ -1,3 +1,13 @@
+/**
+ * FanVise Transaction Service
+ * 
+ * Handles the fetching, parsing, and storage of league transactions (adds, drops, trades).
+ * This service is critical for the "Market Intelligence" module, allowing the AI to 
+ * monitor roster churn and identify potential waiver wire opportunities.
+ * 
+ * @module services/transaction
+ */
+
 "use server";
 
 import { createClient } from '@/utils/supabase/server';
@@ -19,6 +29,7 @@ export async function getLatestTransactions(leagueId: string, limit = 5) {
     return data;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchAndSyncTransactions(leagueId: string, year: string, sport: string, existingSupabase?: any) {
     console.log(`Syncing transactions for league ${leagueId}...`);
     const supabase = existingSupabase || await createClient();
@@ -28,26 +39,9 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
 
     const client = new EspnClient(leagueId, year, sport, swid, s2);
 
-    // 1. Fetch from ESPN using the client which handles CORS (since it's on server) and cookies
-    // Add mRoster view to get a complete player lookup table for name resolution
-    const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${sport}/seasons/${year}/segments/0/leagues/${leagueId}?view=mTransactions2&view=mRoster`;
-    console.log(`Fetching transactions from: ${url}`);
-
     try {
-        const response = await fetch(url, {
-            headers: {
-                "User-Agent": "FanVise/1.0",
-                "Cookie": swid && s2 ? `swid=${swid}; espn_s2=${s2};` : ""
-            },
-            next: { revalidate: 0 } // Don't cache for sync
-        });
-
-        if (!response.ok) {
-            console.error(`ESPN Transactions API Error: ${response.status}`);
-            return 0;
-        }
-
-        const data = await response.json();
+        // 1. Fetch from ESPN using the central client
+        const data = await client.getTransactions();
         const transactions = data.transactions || [];
 
         // Build a global player map from all team rosters for robust name resolution
@@ -72,6 +66,7 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
             .eq('league_id', leagueId)
             .single();
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const teams = (leagueData?.teams as any[]) || [];
         const teamMap = new Map(teams.map(t => [String(t.id), t]));
 
@@ -109,7 +104,7 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
                     const teamName = team?.name || "Unknown Team";
 
                     // Try to resolve player name using various sources
-                    let playerName = item.playerPoolEntry?.player?.fullName ||
+                    const playerName = item.playerPoolEntry?.player?.fullName ||
                         playerMap.get(item.playerId) ||
                         `Player ${item.playerId}`;
 
