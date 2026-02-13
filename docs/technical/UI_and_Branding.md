@@ -13,7 +13,7 @@ FanVise adopts a "Street-Smart High-Tech" aesthetic, blending modern data densit
 
 | Role | Color Name | Hex Code | Usage |
 | :--- | :--- | :--- | :--- |
-| Primary | **Future Teal** | `#0d9488` | The AI voice, primary buttons, "thinking" states. |
+| Primary | **Cyber Jumpman Blue** | `#5593f7` | The AI voice, primary buttons, "thinking" states. |
 | Accent | **Rim Orange** | `#ea580c` | Alerts, hot players, critical CTAs. |
 | Background | **Court White** | `#fdfbf7` | Subtle warm off-white (Light Mode). |
 | Background | **Midnight** | `hsl(222 47% 11%)` | Sleek slate/blue (Dark Mode). |
