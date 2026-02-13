@@ -24,7 +24,14 @@ Deep dives into the system architecture and implementation details.
 *   **[API & Agents](./technical/API_and_Agents.md)**: How the AI service interacts with the application.
 *   **[System Prompts](./technical/System_Prompts.md)**: The prompt engineering behind the "FanVise Strategist" persona.
 *   **[Rate Limiting Strategy](./technical/rate-limiting-ai-strategy.md)**: Strategies for managing LLM API costs and limits.
+*   **[AI Evaluation Framework](./technical/AI_Evaluation_Framework.md)**: Black-box QA process, judge providers, and evaluation operations.
 
 ### Audits & Roadmaps
 *   **[Codebase Audit](./technical/Audit_and_Roadmap.md)**: Current state assessment and refactoring goals.
 *   **[Data Audit](./technical/Data_Audit_and_Roadmap.md)**: Review of data integrity and ingestion pipelines.
+
+## AI QA Evaluation
+
+*   **FanVise Combine**: Standalone black-box RAG evaluator in `../fanvise_eval/`.
+*   Targets the public API endpoint `http://localhost:3000/api/chat`.
+*   Run via root script: `npm run test:ai`.

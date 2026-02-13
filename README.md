@@ -36,3 +36,27 @@ We maintain comprehensive documentation for developers and contributors:
 *   **Frontend**: Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui.
 *   **Backend**: Supabase (PostgreSQL + Vector), Next.js Server Actions.
 *   **AI/ML**: Google Vertex AI (Gemini), Ollama (Local LLMs).
+
+## AI Evaluation (FanVise Combine)
+
+The repository includes a standalone black-box RAG evaluation suite in `fanvise_eval/`.
+
+*   Install and run from the root with: `npm run test:ai`
+*   Evaluations target `http://localhost:3000/api/chat`
+*   Dataset source: `fanvise_eval/golden_dataset.json`
+*   Judge provider is configurable (`none`, `gemini`, `openai`, `ollama`, `local`) via `fanvise_eval/.env`.
+
+## Operations and Testing
+
+Operational workflows are handled via tracked scripts in `src/ops/`:
+
+*   `npm run news:ingest` - Run standard news ingestion.
+*   `npm run news:ingest:historical` - Run historical backfill (`NEWS_BACKFILL_PAGES` configurable).
+*   `npm run league:sync` - Sync league metadata and transactions from ESPN to Supabase.
+
+Integration verification lives in `tests/integration/` and is environment-gated:
+
+*   `npm run test:integration` - Runs integration tests that require `RUN_INTEGRATION_TESTS=true`.
+*   `npm run test:integration:live-feeds` - Also enables live RSS reachability checks.
+
+This keeps one-off debugging out of production workflows and moves repeatable checks into test cases.

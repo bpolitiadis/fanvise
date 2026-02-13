@@ -99,6 +99,7 @@ By leveraging an **Environment-Adaptive RAG** architecture, FanVise merges **Pri
 ### **5.1. The "Optimize Lineup" Engine (Start/Sit Decision)**
 *   **Status:** **Pending Implementation**.
 *   **Description:** A daily roster optimization tool that answers "Who do I start today?".
+*   **Canonical Technical Spec:** `docs/technical/Lineup_Optimization_Flow.md`.
 *   **Logic:**
     *   **Slot Conflict Resolution:** Analyze daily schedule to find "Full Position Slots" vs "Open Slots".
     *   **Value Density:** Calculate: $(Projected PPG \times Games Remaining) - (Current Player PPG \times Games Remaining)$.
@@ -109,6 +110,7 @@ By leveraging an **Environment-Adaptive RAG** architecture, FanVise merges **Pri
         *   Match against "Top Available Free Agents" with favorable 2-3 day schedules.
         *   Check roster fit (positional validity) for the specific streaming days.
 *   **Output:** A specific "Start/Sit" recommendation list and a ranked waiver wire list labeled as **Pure Stream** or **Speculative Hold**.
+*   **Implementation Direction (v1):** Build with deterministic optimizer services and chat tool/function calling first; evaluate LangGraph only when multi-step orchestration complexity requires durable workflow state.
 
 ### **5.4. Player Intelligence Enrichment (Implemented)**
 *   **Status:** **Live**.

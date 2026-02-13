@@ -13,6 +13,7 @@ This document summarizes the current state of the FanVise project, identifies te
 ### 2. Duplicate Implementations
 - ~~**League Management**: Logic for "switching perspective" exists in both the `PerspectiveContext` and partially in the `Chat API` route. This should be unified into a single service layer.~~ **RESOLVED**: All league logic now in `src/services/league.service.ts`.
 - ~~**ESPN Client**: Partial implementations of ESPN scraping logic are scattered between `src/lib/espn` and some older route files.~~ **RESOLVED**: ESPN client is now the single source in `src/lib/espn/client.ts`.
+- ~~**One-off scripts in `/scripts/`**: Debug and ingestion scripts were ad hoc and untracked.~~ **RESOLVED**: Replaced by tracked ops in `src/ops/` with npm run targets (`news:ingest`, `news:ingest:historical`, `league:sync`).
 
 
 ## Project Roadmap (TODO List)
@@ -20,7 +21,8 @@ This document summarizes the current state of the FanVise project, identifies te
 ### Priority 1: Core Feature Completion
 - [x] **Player Intelligence (Free Agents)**: Enriched `PlayerContext` with Season Outlook and News.
 - [x] **Player Intelligence (Rosters)**: Expands Outlook/News coverage to `My Team` and `Opponent` rosters for better Start/Sit context.
-- [ ] **The Optimizer Engine**: Implement the "Start/Sit" & "Lineup Optimization" logic (Phase 2).
+- [x] **Optimizer Technical Spec (Core Flow)**: Added canonical process and phased implementation plan in `docs/technical/Lineup_Optimization_Flow.md`.
+- [ ] **The Optimizer Engine**: Implement the "Start/Sit" & "Lineup Optimization" logic (Phase 2), following `docs/technical/Lineup_Optimization_Flow.md`.
 - [ ] **Weekly Vibe Check**: Create the automated reporting system (Daily Brief / Weekly Trash Talk) via Next.js Cron Jobs.
 - [ ] **Intelligent Widgets**: Develop more shadcn-based components (Player Cards, Stat Grids) for the AI to render in the chat stream.
 
