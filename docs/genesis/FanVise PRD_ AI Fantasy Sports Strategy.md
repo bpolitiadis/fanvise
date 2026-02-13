@@ -19,7 +19,7 @@
 
 **1. Executive Summary**
 
-**FanVise** is an AI-native intelligence platform for ESPN Fantasy Basketball (H2H Points). Unlike traditional tools that act as static data viewers, FanVise acts as an active **Strategic Consigliere**.
+**FanVise** is an AI-native intelligence platform for ESPN Fantasy Basketball (H2H Points). Unlike traditional tools that act as static data viewers, FanVise acts as an active **FanVise Strategist** (the data-obsessed, trash-talking friend).
 
 By leveraging an **Environment-Adaptive RAG** architecture, FanVise merges **Private League Data** (Rosters, Matchups, Scoring) with **Public Real-Time Intelligence** (News, Injury Reports, Sentiment) to solve the two biggest pain points in fantasy sports: **Time Poverty** and **Information Asymmetry.**
 
@@ -96,14 +96,26 @@ By leveraging an **Environment-Adaptive RAG** architecture, FanVise merges **Pri
 
 **5. Roadmap (Future Improvements)**
 
-### **5.1. The "Optimize Lineup" Engine**
-
+### **5.1. The "Optimize Lineup" Engine (Start/Sit Decision)**
 *   **Status:** **Pending Implementation**.
-*   **Description:** An algorithmic tool to maximize "Value Density" over a specific window ($X$ Days).
+*   **Description:** A daily roster optimization tool that answers "Who do I start today?".
 *   **Logic:**
-    *   The system scans the Waiver Wire.
-    *   Calculates: $(Projected PPG \times Games Remaining) - (Current Player PPG \times Games Remaining)$.
-*   **Output:** A ranked list of transactions labeled as **Pure Stream** or **Speculative Hold**.
+    *   **Slot Conflict Resolution:** Analyze daily schedule to find "Full Position Slots" vs "Open Slots".
+    *   **Value Density:** Calculate: $(Projected PPG \times Games Remaining) - (Current Player PPG \times Games Remaining)$.
+    *   **Bench Management:** Identify players on the bench who *should* be starting based on matchup favorability.
+    *   **Streaming Intelligence:**
+        *   Analyze "Volume Advantage" (Games Remaining this week).
+        *   Identify "Droppable Candidates" (Players with gaps in schedule).
+        *   Match against "Top Available Free Agents" with favorable 2-3 day schedules.
+        *   Check roster fit (positional validity) for the specific streaming days.
+*   **Output:** A specific "Start/Sit" recommendation list and a ranked waiver wire list labeled as **Pure Stream** or **Speculative Hold**.
+
+### **5.4. Player Intelligence Enrichment (Implemented)**
+*   **Status:** **Live**.
+*   **Description:** Integration of deep player metadata into the Strategist's context.
+*   **Features:**
+    *   **Season Outlook:** Narrative summary of a player's season trajectory (e.g., "Breakout candidate", "Regression expected").
+    *   **Recent News:** Real-time news updates mapped directly to the player card.
 
 ### **5.2. Automated Intelligence Reports**
 

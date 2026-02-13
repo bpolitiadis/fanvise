@@ -7,7 +7,7 @@ Understanding the *why* and *what* of FanVise.
 
 *   **[Product Requirements Document (PRD)](./genesis/FanVise%20PRD_%20AI%20Fantasy%20Sports%20Strategy.md)**
     *   Defines the core value proposition: "The Intelligent Edge for Fantasy Basketball."
-    *   Outlines the "Strategic Consigliere" persona and "Perspective Engine."
+    *   Outlines the "FanVise Strategist" persona and "Perspective Engine."
     *   Details the pivot to a Dual-Environment Architecture (Next.js + Supabase).
 
 ## 🛠️ Technical Documentation
@@ -22,7 +22,7 @@ Deep dives into the system architecture and implementation details.
 
 ### Agents & Intelligence
 *   **[API & Agents](./technical/API_and_Agents.md)**: How the AI service interacts with the application.
-*   **[System Prompts](./technical/System_Prompts.md)**: The prompt engineering behind the "Coach" persona.
+*   **[System Prompts](./technical/System_Prompts.md)**: The prompt engineering behind the "FanVise Strategist" persona.
 *   **[Rate Limiting Strategy](./technical/rate-limiting-ai-strategy.md)**: Strategies for managing LLM API costs and limits.
 
 ### Audits & Roadmaps

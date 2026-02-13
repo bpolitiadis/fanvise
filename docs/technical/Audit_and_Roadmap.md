@@ -17,17 +17,14 @@ This document summarizes the current state of the FanVise project, identifies te
 
 ## Project Roadmap (TODO List)
 
-### Priority 1: Data Integrity & Realism
-- [x] **Real Dashboard Stats**: Replace mock schedule and leaders in `page.tsx` with live values from synced DB.
-- [x] **Transaction Sync**: Implement a service to fetch and store league transactions (adds/drops/trades) to inform news context.
-- [x] **Cleanup**: Delete all `*_temp` files and unused historical scripts in the `scripts/` directory.
-
-### Priority 2: Core Feature Completion
-- [ ] **The Optimizer Engine**: Implement the "Optimize Lineup" algorithm described in PRD section 4.3.
+### Priority 1: Core Feature Completion
+- [x] **Player Intelligence (Free Agents)**: Enriched `PlayerContext` with Season Outlook and News.
+- [x] **Player Intelligence (Rosters)**: Expands Outlook/News coverage to `My Team` and `Opponent` rosters for better Start/Sit context.
+- [ ] **The Optimizer Engine**: Implement the "Start/Sit" & "Lineup Optimization" logic (Phase 2).
 - [ ] **Weekly Vibe Check**: Create the automated reporting system (Daily Brief / Weekly Trash Talk) via Next.js Cron Jobs.
 - [ ] **Intelligent Widgets**: Develop more shadcn-based components (Player Cards, Stat Grids) for the AI to render in the chat stream.
 
-### Priority 3: Polish & UX
+### Priority 2: Polish & UX
 - [ ] **Smooth Localization**: Fully implement `next-intl` across all UI labels (currently only documented as a principle).
 - [ ] **Performance Audit**: Optimize the RAG embedding search (ensure indexes are correct on the `vector` column).
 - [ ] **Mobile Optimization**: Refine the responsive behavior of the Dashboard grid.

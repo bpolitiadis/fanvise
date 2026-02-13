@@ -1,6 +1,6 @@
 # System Architecture
 
-FanVise is an AI-native fantasy sports intelligence platform designed as a "Savant" layer on top of existing fantasy ecosystem. The application is built as a unified, standalone Next.js solution that integrates data ingestion, AI orchestration, and RAG pipelines into a single high-performance deployment.
+FanVise is an AI-native fantasy sports intelligence platform designed as a "Strategist" layer on top of existing fantasy ecosystem. The application is built as a unified, standalone Next.js solution that integrates data ingestion, AI orchestration, and RAG pipelines into a single high-performance deployment.
 
 ## High-Level Overview
 

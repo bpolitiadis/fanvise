@@ -5,7 +5,7 @@
 **FanVise** is the "Intelligent Edge" for Fantasy Basketball. It is not a betting site, nor is it a dry spreadsheet tool. It is a high-tech companion that combines deep data analytics with the culture of basketball.
 
 * **The Vibe:** Fresh, energetic, "Street-Smart High-Tech." Think *The Athletic* meets *Arc Browser*, infused with NBA court culture.  
-* **The Core Experience:** A "Savant Co-Owner" (AI) guiding the user through a familiar, standard Chat interface.  
+* **The Core Experience:** A "Data-Freak Friend" (AI) guiding the user through a familiar, standard Chat interface.  
 * **The Tech Philosophy:** "Don't Reinvent the Wheel." We leverage **Next.js** and **shadcn/ui** to build a system that feels fluid, instant, and native.  
 * **Localization:** Native support for **English** and **Greek** from Day 1\.
 
@@ -18,9 +18,9 @@
 We are moving away from dark, heavy financial aesthetics. The new look is **Airy, Crisp, and Kinetic.**
 
 * **Light Mode (Default):** The primary view. Clean white/off-white backgrounds, heavily relying on whitespace to reduce cognitive load. It feels optimistic and clear.  
-* **Dark Mode:** A toggle option. It shifts to a sleeker, "Night Game" vibe—cool greys and deep teals—retaining the high-tech feel without becoming a gloomy terminal.  
+* **Dark Mode:** A toggle option. It shifts to a sleeker, "Night Game" vibe—cool greys and deep blues—retaining the high-tech feel without becoming a gloomy terminal.  
 * **Accent Philosophy:** Color is used with extreme intention.  
-  * **Teal:** Represents **Intelligence** (The AI, The Data, The Future).  
+  * **Blue:** Represents **Intelligence** (The AI, The Data, The Future).  
   * **Orange:** Represents **The Game** (The Ball, The Action, The Court).
 
 ### **2.2 Typography**
@@ -35,7 +35,7 @@ We utilize the **Geist** family (Vercel's standard). It is modern, incredibly le
 
 ### **2.3 Color Theory: "Fresh Hops"**
 
-This palette avoids generic "Bootstrap" colors. It pairs a hyper-modern Teal with a classic Basketball Orange.
+This palette avoids generic "Bootstrap" colors. It pairs a hyper-modern Blue with a classic Basketball Orange.
 
 #### **The Palette**
 
@@ -43,14 +43,14 @@ This palette avoids generic "Bootstrap" colors. It pairs a hyper-modern Teal wit
 | :---- | :---- | :---- | :---- |
 | **Background** | Court White | \#fdfbf7 | A very subtle warm off-white (Light Mode). Avoids clinical pure white. |
 | **Surface** | Paper White | \#ffffff | Cards, Inputs, Sidebars (Light Mode). |
-| **Primary Brand** | Future Teal | \#0d9488 | **The AI Voice.** Submit buttons, "Thinking" states, primary navigation. |
+| **Primary Brand** | Cyber Jumpman Blue | \#5593f7 | **The AI Voice.** Submit buttons, "Thinking" states, primary navigation. |
 | **Accent / Action** | Rim Orange | \#ea580c | **The Game.** Alerts, "Hot" players, Buy signals, Critical CTAs. |
 | **Text (Main)** | Ink Black | \#1e293b | Primary text. High contrast, readable. |
 | **Text (Muted)** | Court Grey | \#64748b | Labels, timestamps, metadata. |
 | **Success** | Mint | \#10b981 | Positive Stat Variance. |
 | **Error / Alert** | Foul Red | \#ef4444 | Injuries, negative trade value. |
 
-*(Note: Dark Mode maps these to deep Slate tones, keeping the Teal/Orange accents luminous).*
+*(Note: Dark Mode maps these to deep Slate tones, keeping the Blue/Orange accents luminous).*
 
 ## ---
 
@@ -69,7 +69,7 @@ We strictly use **shadcn/ui** components.
 
 1. **The Sidebar (Navigation):**  
    * **Tech:** shadcn/sheet (mobile) / Resizable Panel (desktop).  
-   * **Content:** "New Chat" button (Teal), Chat History (grouped by week), User Profile, and **Settings (Language Toggle)**.  
+   * **Content:** "New Chat" button (Blue), Chat History (grouped by week), User Profile, and **Settings (Language Toggle)**.  
 2. **The Chat Stream (Central):**  
    * **Behavior:** A single, smooth-scrolling feed.  
    * **User Message:** Simple text bubble, right-aligned or distinct background.  
@@ -98,7 +98,7 @@ The AI doesn't just output text; it renders components within the chat stream.
 
 ## ---
 
-**5\. Voice & Tone: "The Savant Co-Owner"**
+**5\. Voice & Tone: "The Data-Freak Friend"**
 
 **Persona:** Imagine your college roommate who is a data genius, watches every game, and helps run the team with you. He’s hype, he’s smart, and he’s "one of us."
 
@@ -107,7 +107,7 @@ The AI doesn't just output text; it renders components within the chat stream.
 
 ### **5.1 Voice Examples**
 
-| Context | Generic AI (Avoid) | The FanVise Savant (Target) |
+| Context | Generic AI (Avoid) | The FanVise Strategist (Target) |
 | :---- | :---- | :---- |
 | **Winning a Trade** | "This trade has a positive ROI of 12%." | "Bro, you are robbing them. You gain \+12% value instantly. Smash accept before they sober up." |
 | **Injury News** | "Embiid is injured. Adjust lineup." | "Tough blow, Embiid is out. But we've got options. Paul Reed is sitting on the wire and his per-36 stats are elite. Let's pivot." |
@@ -127,7 +127,7 @@ The AI doesn't just output text; it renders components within the chat stream.
 ### **6.2 Asset Preparation**
 
 * **Icons (Lucide):**  
-  * Sparkles (The AI/Teal).  
+  * Sparkles (The AI/Blue).  
   * Flame (Hot/Orange).  
   * Dribbble (Basketball/Sport Context).  
   * Globe (Language Toggle).  

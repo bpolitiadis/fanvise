@@ -89,4 +89,4 @@ erDiagram
 * **Decoupled Stat Aggregates:** We avoid the "Time Poverty" pain point by pre-calculating "Value Density" in the STAT\_AGGREGATE table. Instead of calculating averages on the fly, the AI queries this table to find "Pure Streams" vs. "Speculative Holds" in under 3 seconds.  
   \+3
 
-* **Vector Integration (The Cognitive Layer):** The NEWS\_INTELLIGENCE table is our "Savant" brain. By using pgvector, we can perform a similarity search to find the latest injury reports for "Giannis" and immediately trigger the "Next Man Up" alert for "Bobby Portis".
+* **Vector Integration (The Cognitive Layer):** The NEWS\_INTELLIGENCE table is our "Strategist" brain. By using pgvector, we can perform a similarity search to find the latest injury reports for "Giannis" and immediately trigger the "Next Man Up" alert for "Bobby Portis".
