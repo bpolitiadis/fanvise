@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { EspnClient } from "@/lib/espn/client";
 import { upsertLeague } from "@/services/league.service";
 import { mapEspnLeagueData } from "@/lib/espn/mappers";
 
-export async function POST(req: NextRequest) {
+export async function POST() {
     try {
         const leagueId = process.env.NEXT_PUBLIC_ESPN_LEAGUE_ID!;
         const year = process.env.NEXT_PUBLIC_ESPN_SEASON_ID!;
@@ -49,10 +49,11 @@ export async function POST(req: NextRequest) {
             data: { name, seasonId: year }
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Sync error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
         return NextResponse.json(
-            { error: error.message || "Internal Server Error" },
+            { error: errorMessage },
             { status: 500 }
         );
     }

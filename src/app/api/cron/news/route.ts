@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { fetchAndIngestNews } from "@/services/news.service";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
     try {
         // Optional: Add secret key check for security
         // const authHeader = req.headers.get('authorization');
@@ -11,8 +11,9 @@ export async function GET(req: NextRequest) {
 
         const count = await fetchAndIngestNews();
         return NextResponse.json({ success: true, count });
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
         console.error("News ingestion failed:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }

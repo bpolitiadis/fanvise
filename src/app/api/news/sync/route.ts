@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAndIngestNews } from "@/services/news.service";
-import { createClient } from "@/utils/supabase/server";
 import { EspnClient } from "@/lib/espn/client";
+import type { EspnTeam } from "@/lib/espn/types";
+
+interface EspnRosterEntryLite {
+    playerPoolEntry?: {
+        player?: {
+            fullName?: string;
+        };
+    };
+}
 
 export async function POST(req: NextRequest) {
     try {
@@ -18,11 +26,11 @@ export async function POST(req: NextRequest) {
 
                 const espnClient = new EspnClient(leagueId, year, sport, swid, s2);
                 const leagueData = await espnClient.getLeagueSettings();
-                const myTeam = leagueData.teams?.find((t: any) => String(t.id) === String(teamId));
+                const myTeam = leagueData.teams?.find((t: EspnTeam) => String(t.id) === String(teamId));
 
                 const roster = myTeam?.roster || myTeam?.rosterForCurrentScoringPeriod;
                 if (roster?.entries) {
-                    roster.entries.forEach((entry: any) => {
+                    roster.entries.forEach((entry: EspnRosterEntryLite) => {
                         const name = entry.playerPoolEntry?.player?.fullName;
                         if (name) watchlist.push(name);
                     });
@@ -46,11 +54,12 @@ export async function POST(req: NextRequest) {
         }
 
         return NextResponse.json({ success: true, count, watchlistSize: watchlist.length, backfill: !!backfill });
-    } catch (error: any) {
-        console.error("[Sync API] Critical error:", error.message);
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "Internal server error during sync";
+        console.error("[Sync API] Critical error:", errorMessage);
         return NextResponse.json({
             success: false,
-            error: error.message || "Internal server error during sync",
+            error: errorMessage,
             count: 0
         }, { status: 500 });
     }

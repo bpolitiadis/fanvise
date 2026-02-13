@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { ScheduleService } from "@/services/schedule.service";
 
-export async function POST(req: NextRequest) {
+export async function POST() {
     try {
         const year = process.env.NEXT_PUBLIC_ESPN_SEASON_ID || "2024";
 
@@ -15,10 +15,11 @@ export async function POST(req: NextRequest) {
             message: `Synced ${count} NBA games for season ${year}`,
             count
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
         console.error("[API] Schedule Sync Error:", error);
         return NextResponse.json(
-            { error: error.message || "Internal Server Error" },
+            { error: errorMessage },
             { status: 500 }
         );
     }
