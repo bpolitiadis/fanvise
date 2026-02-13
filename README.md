@@ -2,55 +2,37 @@
 
 **The Intelligent Edge for Fantasy Basketball.**
 
-FanVise is a strategic intelligence platform for ESPN Fantasy Basketball (H2H Points). It bridges the gap between raw league data and winning decisions by combining private league context with real-time NBA intelligence using a RAG (Retrieval-Augmented Generation) architecture.
+FanVise is a strategic intelligence platform for ESPN Fantasy Basketball (H2H Points). It acts as a **Strategic Consigliere**, bridging the gap between raw league data and winning decisions by combining private league context with real-time NBA intelligence.
+
+## 🧠 Dual-Environment AI Architecture
+
+FanVise leverages a unique **Environment-Adaptive RAG** architecture, allowing you to choose your intelligence provider:
+
+*   **Cloud Mode (Google Gemini 2.0)**: High-reasoning, low-latency performance for complex strategic analysis.
+*   **Local Mode (Ollama)**: Privacy-focused, offline-capable inference using models like **DeepSeek R1** or **Llama 3**, running entirely on your local machine.
+
+## 🚀 Getting Started
+
+For detailed installation instructions, prerequisites (Docker, Supabase, Ollama), and configuration, please refer to our **[Getting Started Guide](./GETTING_STARTED.md)**.
+
+## 📚 Documentation
+
+We maintain comprehensive documentation for developers and contributors:
+
+*   **[Documentation Index](./docs/README.md)**
+    *   **[Product Vision (PRD)](./docs/genesis/FanVise%20PRD_%20AI%20Fantasy%20Sports%20Strategy.md)**
+    *   **[System Architecture](./docs/technical/Architecture.md)**
+    *   **[Technical Implementation](./docs/technical)**
 
 ## Key Features
 
-*   **🎙️ Strategic Consigliere**: An authoritative AI persona that provides data-grounded advice on roster moves, trades, and weekly strategy.
-*   **📡 Real-Time Intelligence Feed**: Aggregated and filtered news from multiple NBA sources (ESPN, CBS, NBC, etc.), prioritized for fantasy impact.
-*   **📊 Dynamic Dashboard**: High-density view of league standings, team rosters, and recent activity.
-*   **📈 Advanced Metrics**: Integration of granular player performance data directly from ESPN APIs.
+*   **🎙️ Strategic Consigliere**: An authoritative AI persona that provides data-grounded advice.
+*   **📡 Real-Time Intelligence Feed**: Aggregated news from ESPN, CBS, and Rotowire.
+*   **📊 Dynamic Dashboard**: High-density view of league standings and rosters.
+*   **🔄 Perspective Engine**: Simulate any manager's view to find their weaknesses.
 
 ## Tech Stack
 
-*   **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
-*   **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-*   **UI Components**: [shadcn/ui](https://ui.shadcn.com/)
-*   **Database**: Supabase (PostgreSQL)
-*   **Backend Logic**: Google Cloud Functions (Python - *Decoupled*)
-*   **State/Animations**: Framer Motion
-
-## Getting Started
-
-1.  **Install Dependencies**:
-    ```bash
-    pnpm install
-    ```
-
-2.  **Run Development Server**:
-    ```bash
-    pnpm dev
-    ```
-
-3.  **Build for Production**:
-    ```bash
-    pnpm build
-    ```
-
-## Environment Variables
-
-Ensure you have a `.env.local` file with the following:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-LOG_LEVEL=info
-```
-
-## Directory Structure
-
-*   `src/app`: Next.js App Router pages.
-*   `src/components`: UI components (shadcn & custom).
-*   `src/lib`: Utilities (Supabase client, logger, cn).
-*   `src/services`: Decoupled business logic and API services.
-*   `supabase`: Database migrations and schema definitions.
+*   **Frontend**: Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui.
+*   **Backend**: Supabase (PostgreSQL + Vector), Next.js Server Actions.
+*   **AI/ML**: Google Vertex AI (Gemini), Ollama (Local LLMs).
