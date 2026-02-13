@@ -1,0 +1,4 @@
+deepeval
+requests
+pytest
+python-dotenv

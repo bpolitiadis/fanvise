@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateStrategicResponse, type IntelligenceOptions } from "@/services/intelligence.service";
+import { generateStrategicResponse } from "@/services/intelligence.service";
 import type { ChatMessage } from '@/types/ai';
 import type { SupportedLanguage } from "@/prompts/types";
+import { searchNews } from "@/services/news.service";
 
 interface RequestMessage {
     role: "user" | "assistant";
@@ -13,6 +14,7 @@ interface ChatRequestBody {
     activeTeamId?: string | null;
     activeLeagueId?: string | null;
     language?: SupportedLanguage;
+    evalMode?: boolean;
 }
 
 const isRateLimitError = (error: unknown) => {
@@ -29,7 +31,8 @@ const isRateLimitError = (error: unknown) => {
 export async function POST(req: NextRequest) {
     try {
         const body = (await req.json()) as ChatRequestBody;
-        const { messages, activeTeamId, activeLeagueId, language = 'en' } = body;
+        const { messages, activeTeamId, activeLeagueId, language = 'en', evalMode = false } = body;
+        const shouldIncludeDebugContext = process.env.NODE_ENV === "development" && evalMode;
 
         if (!activeTeamId || !activeLeagueId) {
             console.warn(`[Chat API] Incoming request with MISSING perspective: Team: ${activeTeamId}, League: ${activeLeagueId}`);
@@ -56,6 +59,28 @@ export async function POST(req: NextRequest) {
             currentMessageContent,
             { activeTeamId, activeLeagueId, language }
         );
+
+        if (shouldIncludeDebugContext) {
+            let debugContext: unknown[] = [];
+            try {
+                const retrievedDocs = await searchNews(currentMessageContent);
+                if (Array.isArray(retrievedDocs)) {
+                    debugContext = retrievedDocs;
+                }
+            } catch (debugError) {
+                console.warn("[Chat API] Failed to fetch debug_context:", debugError);
+            }
+
+            let output = "";
+            for await (const chunk of streamResult) {
+                if (chunk) output += chunk;
+            }
+
+            return NextResponse.json({
+                output,
+                debug_context: debugContext,
+            });
+        }
 
         // Create response stream
         const encoder = new TextEncoder();

@@ -20,6 +20,29 @@ Used for local development or private deployments.
 
 ---
 
+## Evaluation Model Strategy (FanVise Combine)
+
+For AI QA, FanVise uses a judge-provider split:
+
+- **Generator**: the model serving `/api/chat` (often local/Ollama in development).
+- **Judge**: configurable evaluator model in `fanvise_eval/test_fanvise.py`.
+
+Best practice:
+
+- Avoid same-model self-judging for release decisions.
+- Use local judges for frequent/cheap runs.
+- Run periodic Gemini-judged evaluations for higher-confidence gates.
+
+Judge providers supported by the evaluation runner:
+
+- `none` (deterministic-only)
+- `gemini`
+- `openai`
+- `ollama`
+- `local` (OpenAI-compatible endpoint)
+
+---
+
 ## Environment Configuration
 
 Create a `.env.local` file with the following variables to configure the intelligence layer:

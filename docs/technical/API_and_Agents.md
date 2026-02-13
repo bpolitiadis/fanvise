@@ -28,9 +28,19 @@ The **Central Brain** of the application. It orchestrates the entire "FanVise St
 A thin controller layer that receives user input and delegates execution to the `Intelligence Service`.
 -   **Responsibility**: Request validation, rate limiting, and response streaming.
 -   **Logic**: **None**. All business logic is now encapsulated in the Intelligence Service.
+-   **Eval Observability (Dev Only)**: when `evalMode=true` and `NODE_ENV=development`, the route can return `debug_context` for black-box faithfulness evaluation.
 
 ## Key Services
 - **Intelligence Service (`src/services/intelligence.service.ts`)**: Orchestrates RAG, context building, and prompt generation.
 - **League Service (`src/services/league.service.ts`)**: Aggregates ESPN API data and Supabase records into a unified "Intelligence Snapshot".
 - **News Service (`src/services/news.service.ts`)**: Manages the RAG pipeline, including RSS ingestion, AI intelligence extraction, and vector storage.
 - **ESPN Client (`src/lib/espn/client.ts`)**: The core connector for fetching team and league data.
+
+## Evaluation Agent (Standalone)
+
+`fanvise_eval/test_fanvise.py` acts as a standalone black-box evaluator against `/api/chat`:
+
+- Sends controlled prompts from `fanvise_eval/golden_dataset.json`.
+- Collects output and optional `debug_context`.
+- Applies deterministic policy/math checks.
+- Applies optional LLM-judge metrics (provider selected via `FANVISE_JUDGE_PROVIDER`).
