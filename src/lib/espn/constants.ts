@@ -90,7 +90,7 @@ export function getPositionName(id: number | string): string {
     return ESPN_POSITION_MAPPINGS[numericId] || String(id);
 }
 
-export function getStatName(id: number, points: number): string {
+export function getStatName(id: number): string {
     const name = ESPN_STAT_MAPPINGS[id];
     if (!name) return `Stat ID: ${id}`;
 

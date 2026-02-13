@@ -15,7 +15,7 @@ export class EspnClient {
 
     // Helper to construct headers with cookies
     private getHeaders(): HeadersInit {
-        const headers: HeadersInit = {
+        const headers: Record<string, string> = {
             "User-Agent": "FanVise/1.0",
         };
 
@@ -27,10 +27,6 @@ export class EspnClient {
     }
 
     async getLeagueSettings() {
-        // Use lm-api-reads for better reliability with some legacy/private leagues
-        const params = new URLSearchParams({
-            view: "mSettings"
-        });
         // Add multiple views by appending manually since URLSearchParams encodes commas sometimes in a way ESPN doesn't like,
         // or just use the standard parameter repetition if supported.
         // ESPN V3 compliant way: ?view=mSettings&view=mTeam&view=mRoaster
@@ -54,7 +50,7 @@ export class EspnClient {
             try {
                 // Return as typed response - validation handled by runtime checks in mapper or usage
                 return JSON.parse(text);
-            } catch (e) {
+            } catch {
                 console.error("Failed to parse ESPN response:", text.substring(0, 500));
                 throw new Error(`Invalid JSON from ESPN: ${text.substring(0, 200)}...`);
             }
@@ -92,7 +88,7 @@ export class EspnClient {
         }
     }
 
-    async getTransactions(limit: number = 500) {
+    async getTransactions() {
         // Fetch transactions and roster to allow player name resolution
         const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=mTransactions2&view=mRoster`;
 
@@ -168,9 +164,8 @@ export class EspnClient {
             }
         };
 
-        const headers = this.getHeaders();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (headers as any)['x-fantasy-filter'] = JSON.stringify(filters);
+        const headers = this.getHeaders() as Record<string, string>;
+        headers['x-fantasy-filter'] = JSON.stringify(filters);
 
         try {
             const response = await fetch(url, {

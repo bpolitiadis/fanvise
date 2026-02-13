@@ -71,7 +71,7 @@ export interface EspnKonaPlayerEntry {
     player: EspnPlayer;
     ownership?: EspnPlayerOwnership;
     status?: string;
-    ratings?: any;
+    ratings?: Record<string, unknown>;
 }
 
 export interface EspnPlayerStats {

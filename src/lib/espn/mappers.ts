@@ -25,9 +25,9 @@ export interface ParsedLeagueData {
     scoringSettings: Record<string, unknown>;
     rosterSettings: Record<string, unknown>;
     teams: ParsedLeagueTeam[];
-    draftDetail: unknown;
-    positionalRatings: unknown;
-    liveScoring: unknown;
+    draftDetail: Record<string, unknown>;
+    positionalRatings: Record<string, unknown>;
+    liveScoring: Record<string, unknown>;
 }
 
 /**
@@ -38,8 +38,13 @@ export interface ParsedLeagueData {
  * @returns ParsedLeagueData
  */
 export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): ParsedLeagueData {
+    const toJsonObject = (value: unknown): Record<string, unknown> => {
+        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            return value as Record<string, unknown>;
+        }
+        return {};
+    };
     const settings = data.settings || {};
-    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const name = settings.name || `League ${data.id}`;
     const scoringSettings = settings.scoringSettings || {};
     const rosterSettings = settings.rosterSettings || {};
@@ -73,8 +78,8 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
         scoringSettings,
         rosterSettings,
         teams,
-        draftDetail: data.draftDetail || {},
-        positionalRatings: data.positionalRatings || {},
-        liveScoring: data.liveScoring || {}
+        draftDetail: toJsonObject(data.draftDetail),
+        positionalRatings: toJsonObject(data.positionalRatings),
+        liveScoring: toJsonObject(data.liveScoring)
     };
 }

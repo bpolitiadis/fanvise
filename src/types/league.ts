@@ -3,6 +3,7 @@
  */
 
 import { Player, Team, Matchup, WeeklySchedule, ScoringSettings, RosterSlots } from './fantasy';
+type JsonObject = Record<string, unknown>;
 
 /**
  * Complete intelligence snapshot for a user's current context.
@@ -16,9 +17,9 @@ export interface IntelligenceSnapshot {
         seasonId: string;
         scoringSettings: ScoringSettings;
         rosterSlots: RosterSlots;
-        draftDetail?: any;
-        positionalRatings?: any;
-        liveScoring?: any;
+        draftDetail?: JsonObject;
+        positionalRatings?: JsonObject;
+        liveScoring?: JsonObject;
     };
     /** The team currently being viewed (perspective) */
     myTeam: Team;
@@ -58,8 +59,8 @@ export interface DbLeague {
     name: string;
     scoring_settings: ScoringSettings;
     roster_settings: RosterSlots;
-    draft_detail?: any;
-    positional_ratings?: any;
-    live_scoring?: any;
+    draft_detail?: JsonObject;
+    positional_ratings?: JsonObject;
+    live_scoring?: JsonObject;
     teams?: DbTeam[];
 }

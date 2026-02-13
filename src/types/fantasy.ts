@@ -23,7 +23,7 @@ export interface Player {
     gamesPlayed?: number;
     avgStats?: Record<string, number>;
     seasonOutlook?: string;
-    lastNewsDate?: number;
+    lastNewsDate?: number | string;
     ownership?: {
         percentOwned?: number;
         percentChange?: number;
