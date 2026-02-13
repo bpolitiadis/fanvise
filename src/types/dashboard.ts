@@ -1,3 +1,6 @@
+import type { Team, Player } from './fantasy';
+export type { Team, Player };
+
 export interface NewsItem {
     id: string;
     url: string;
@@ -15,15 +18,6 @@ export interface TransactionItem {
     published_at: string;
 }
 
-/** Team data structure for UI rendering */
-export interface Team {
-    id: string | number;
-    name: string;
-    abbrev: string;
-    logo?: string;
-    manager: string;
-    is_user_owned?: boolean;
-    wins?: number;
-    losses?: number;
-    ties?: number;
-}
+// Use centralized types to eliminate duplication
+export type DashboardTeam = Team;
+export type DashboardPlayer = Player;
