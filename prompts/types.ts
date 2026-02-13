@@ -44,13 +44,18 @@ export interface PlayerContext {
     fullName: string;
     proTeam: string;
     position: string;
-    injuryStatus: 'ACTIVE' | 'OUT' | 'DAY_TO_DAY' | 'HEALTH_AND_SAFETY_PROTOCOLS' | 'INJURY_RESERVE' | 'SUSPENDED';
+    injuryStatus: string;
     isInjured: boolean;
     jersey?: string;
     avgPoints?: number;
     totalPoints?: number;
     gamesPlayed?: number;
     avgStats?: Record<string, number>;
+    ownership?: {
+        percentOwned?: number;
+        percentChange?: number;
+        percentStarted?: number;
+    };
 }
 
 /**
@@ -138,6 +143,8 @@ export interface PromptContext {
     positionalRatings?: any;
     liveScoring?: any;
     pendingTransactions?: any;
+    /** Top available free agents */
+    freeAgents?: PlayerContext[];
 }
 
 // ============================================================================
@@ -154,13 +161,18 @@ export const PlayerContextSchema = z.object({
     fullName: z.string(),
     proTeam: z.string(),
     position: z.string(),
-    injuryStatus: z.enum(['ACTIVE', 'OUT', 'DAY_TO_DAY', 'HEALTH_AND_SAFETY_PROTOCOLS', 'INJURY_RESERVE', 'SUSPENDED']),
+    injuryStatus: z.string().default('ACTIVE'),
     isInjured: z.boolean(),
     jersey: z.string().optional(),
     avgPoints: z.number().optional(),
     totalPoints: z.number().optional(),
     gamesPlayed: z.number().optional(),
     avgStats: z.record(z.string(), z.number()).optional(),
+    ownership: z.object({
+        percentOwned: z.number().optional(),
+        percentChange: z.number().optional(),
+        percentStarted: z.number().optional(),
+    }).optional(),
 });
 
 /**
@@ -215,6 +227,7 @@ export const PromptContextSchema = z.object({
     matchup: MatchupContextSchema.optional(),
     schedule: ScheduleContextSchema.optional(),
     newsContext: z.string().optional(),
+    freeAgents: z.array(PlayerContextSchema).optional(),
 });
 
 // ============================================================================

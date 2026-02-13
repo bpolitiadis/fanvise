@@ -96,6 +96,20 @@ function formatMarketIntelligence(pending?: any): string {
     return `${active.length} active transactions pending. Analyze for potential roster churn.`;
 }
 
+/**
+ * Formats free agent list for prompt injection.
+ */
+function formatFreeAgents(players?: PlayerContext[]): string {
+    if (!players || players.length === 0) return 'No free agent data available.';
+
+    return players.slice(0, 10).map(p => {
+        const ownership = p.ownership?.percentOwned ? ` (Own: ${p.ownership.percentOwned.toFixed(1)}%)` : '';
+        const stats = (p.avgPoints !== undefined) ? ` [AVG: ${p.avgPoints.toFixed(1)}]` : '';
+        const status = p.isInjured ? ` [${p.injuryStatus}]` : '';
+        return `- ${p.fullName} (${p.position})${ownership}${stats}${status}`;
+    }).join('\n');
+}
+
 // ============================================================================
 // English Template
 // ============================================================================
@@ -152,6 +166,9 @@ ${ctx.schedule ? `
 - **Opponent Games Remaining**: ${ctx.schedule.opponentGamesRemaining}
 ${ctx.schedule.myGamesRemaining > ctx.schedule.opponentGamesRemaining ? '⚡ **Volume Advantage Detected**' : ''}
 ` : ''}
+
+## Top Available Free Agents (Waiver Wire)
+${formatFreeAgents(ctx.freeAgents)}
 
 ## Real-Time Intelligence (RAG)
 ${ctx.newsContext || 'No real-time intelligence items available.'}
@@ -224,6 +241,9 @@ ${ctx.schedule ? `
 - **Απομένουν παιχνίδια αντιπάλου**: ${ctx.schedule.opponentGamesRemaining}
 ${ctx.schedule.myGamesRemaining > ctx.schedule.opponentGamesRemaining ? '⚡ **Εντοπίστηκε Πλεονέκτημα Όγκου**' : ''}
 ` : ''}
+
+## Κορυφαίοι Free Agents (Waiver Wire)
+${formatFreeAgents(ctx.freeAgents)}
 
 ## Real-Time Intelligence (RAG)
 ${ctx.newsContext || 'Δεν υπάρχουν διαθέσιμες πληροφορίες.'}

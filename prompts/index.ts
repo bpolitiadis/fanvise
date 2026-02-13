@@ -18,6 +18,7 @@ import type {
     ScheduleContext,
     ScoringSettings,
     RosterSlots,
+    PlayerContext,
 } from './types';
 
 // Re-export types for convenience
@@ -164,6 +165,7 @@ export function contextFromSnapshot(
         opponent?: TeamContext;
         matchup?: MatchupContext;
         schedule?: ScheduleContext;
+        freeAgents?: PlayerContext[];
     },
     language: SupportedLanguage = 'en',
     newsContext?: string
@@ -181,6 +183,7 @@ export function contextFromSnapshot(
         draftDetail: snapshot.league.draftDetail,
         positionalRatings: snapshot.league.positionalRatings,
         liveScoring: snapshot.league.liveScoring,
+        freeAgents: snapshot.freeAgents,
     };
 }
 
