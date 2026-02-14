@@ -55,6 +55,18 @@ interface SearchNewsItem {
     similarity?: number | null;
 }
 
+export interface PlayerStatusSnapshotItem {
+    player_id: number;
+    player_name: string;
+    injury_status: string | null;
+    injury_type: string | null;
+    expected_return_date: string | null;
+    last_news_date: string | null;
+    injured: boolean | null;
+    source: string | null;
+    last_synced_at: string | null;
+}
+
 export interface IntelligenceObject {
     player_name: string | null;
     sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
@@ -191,17 +203,70 @@ const STOP_WORDS = new Set([
     'the', 'and', 'for', 'with', 'from', 'that', 'this', 'what', 'when', 'where', 'should', 'would', 'could',
     'about', 'into', 'your', 'my', 'our', 'you', 'are', 'who', 'tonight', 'today', 'week', 'news', 'player'
 ]);
+const PLAYER_NOISE_TERMS = new Set([
+    ...Array.from(STOP_WORDS),
+    'nba', 'fantasy', 'basketball', 'latest', 'update', 'updates', 'report', 'reports',
+    'status', 'timeline', 'return', 'returns', 'availability', 'injury', 'injuries',
+    'dtd', 'gtd', 'out', 'questionable', 'doubtful', 'ofs', 'ruled', 'available', 'minutes', 'restriction'
+]);
 
 const toIsoDaysAgo = (days: number) => new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString();
 
 const sanitizeSearchTerm = (term: string) => term.replace(/[^a-zA-Z0-9\- ]/g, '').trim();
+
+const normalizeForMatch = (value: string) => value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+interface SearchIntent {
+    isInjuryQuery: boolean;
+    playerCandidates: string[];
+    playerTokens: string[];
+}
+
+const extractPlayerCandidates = (query: string): string[] => {
+    const normalized = query.replace(/[^a-zA-Z0-9\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!normalized) return [];
+
+    const capitalizedPhrases = normalized.match(/\b(?:[A-Z]{2,}|[A-Z][a-z]+)(?:\s+(?:[A-Z]{2,}|[A-Z][a-z]+)){1,2}\b/g) || [];
+    const explicitCandidates = capitalizedPhrases
+        .map(phrase => normalizeForMatch(phrase))
+        .filter(phrase => {
+            const tokens = phrase.split(' ').filter(Boolean);
+            if (tokens.length < 2) return false;
+            return tokens.some(token => !PLAYER_NOISE_TERMS.has(token));
+        });
+
+    const lowerTokens = normalized
+        .toLowerCase()
+        .split(/\s+/)
+        .map(sanitizeSearchTerm)
+        .filter(Boolean);
+    const meaningfulTokens = lowerTokens.filter(token => token.length >= 2 && !PLAYER_NOISE_TERMS.has(token));
+    const fallbackCandidate = meaningfulTokens.length >= 2 ? [`${meaningfulTokens[0]} ${meaningfulTokens[1]}`] : [];
+
+    return Array.from(new Set([...explicitCandidates, ...fallbackCandidate])).slice(0, 3);
+};
+
+const getSearchIntent = (query: string): SearchIntent => {
+    const normalized = query.toLowerCase();
+    const isInjuryQuery = STATUS_KEYWORDS.some(status => normalized.includes(status))
+        || normalized.includes('injur')
+        || normalized.includes('availability');
+    const playerCandidates = extractPlayerCandidates(query);
+    const playerTokens = Array.from(new Set(
+        playerCandidates
+            .flatMap(candidate => candidate.split(' ').filter(Boolean))
+            .filter(token => token.length >= 2 && !PLAYER_NOISE_TERMS.has(token))
+    ));
+
+    return { isInjuryQuery, playerCandidates, playerTokens };
+};
 
 const getQueryTerms = (query: string): string[] => {
     const normalized = query.toLowerCase();
     const baseTerms = normalized
         .split(/\s+/)
         .map(sanitizeSearchTerm)
-        .filter(t => t.length >= 3 && !STOP_WORDS.has(t));
+        .filter(t => t.length >= 2 && !STOP_WORDS.has(t));
     const statusTerms = STATUS_KEYWORDS.filter(status => normalized.includes(status));
     return Array.from(new Set([...statusTerms, ...baseTerms])).slice(0, 8);
 };
@@ -213,7 +278,20 @@ const textHitScore = (text: string, terms: string[]) => {
     return hits / terms.length;
 };
 
-const computeHybridScore = (item: SearchNewsItem, terms: string[]) => {
+const getPlayerMatchScore = (item: SearchNewsItem, intent: SearchIntent) => {
+    if (intent.playerCandidates.length === 0) return 0;
+    const searchableText = normalizeForMatch(`${item.player_name || ''} ${item.title || ''} ${item.summary || ''} ${item.content || ''}`);
+    if (!searchableText) return 0;
+
+    const exactPhraseHit = intent.playerCandidates.some(candidate => searchableText.includes(candidate));
+    if (exactPhraseHit) return 1;
+
+    if (intent.playerTokens.length === 0) return 0;
+    const tokenHits = intent.playerTokens.reduce((count, token) => (searchableText.includes(token) ? count + 1 : count), 0);
+    return tokenHits / intent.playerTokens.length;
+};
+
+const computeHybridScore = (item: SearchNewsItem, terms: string[], intent: SearchIntent) => {
     const now = Date.now();
     const publishedAt = item.published_at ? new Date(item.published_at).getTime() : now;
     const ageHours = Math.max(0, (now - publishedAt) / (1000 * 60 * 60));
@@ -222,12 +300,46 @@ const computeHybridScore = (item: SearchNewsItem, terms: string[]) => {
     const vectorScore = Math.max(0, Math.min(1, item.similarity || 0));
     const keywordText = `${item.title || ''} ${item.summary || ''} ${item.content || ''} ${item.player_name || ''} ${item.injury_status || ''}`;
     const keywordScore = textHitScore(keywordText, terms);
-    return (vectorScore * 0.65) + (keywordScore * 0.25) + (recencyScore * 0.07) + (trustScore * 0.03);
+    const playerScore = getPlayerMatchScore(item, intent);
+
+    let score = (vectorScore * 0.5) + (keywordScore * 0.2) + (playerScore * 0.2) + (recencyScore * 0.07) + (trustScore * 0.03);
+
+    if (intent.isInjuryQuery && intent.playerCandidates.length > 0) {
+        if (playerScore === 0) {
+            score *= 0.2; // Strongly down-rank player-irrelevant injury matches.
+        }
+        if (item.is_injury_report && item.injury_status) {
+            score = Math.min(1, score + 0.08);
+        }
+    }
+
+    return score;
 };
 
 const normalizeSearchRow = (row: unknown): SearchNewsItem => {
     if (!row || typeof row !== 'object') return {};
     return row as SearchNewsItem;
+};
+
+const normalizePlayerStatusRow = (row: unknown): PlayerStatusSnapshotItem | null => {
+    if (!row || typeof row !== "object") return null;
+    const record = row as Record<string, unknown>;
+
+    const playerId = record.player_id;
+    const playerName = record.player_name;
+    if (typeof playerId !== "number" || typeof playerName !== "string") return null;
+
+    return {
+        player_id: playerId,
+        player_name: playerName,
+        injury_status: typeof record.injury_status === "string" ? record.injury_status : null,
+        injury_type: typeof record.injury_type === "string" ? record.injury_type : null,
+        expected_return_date: typeof record.expected_return_date === "string" ? record.expected_return_date : null,
+        last_news_date: typeof record.last_news_date === "string" ? record.last_news_date : null,
+        injured: typeof record.injured === "boolean" ? record.injured : null,
+        source: typeof record.source === "string" ? record.source : null,
+        last_synced_at: typeof record.last_synced_at === "string" ? record.last_synced_at : null,
+    };
 };
 
 interface RssIngestItem {
@@ -461,6 +573,8 @@ export async function searchNews(query: string, limit = 15) {
     }
 
     try {
+        const searchIntent = getSearchIntent(query);
+
         // 1. Embed query for vector retrieval
         const embedding = await getEmbedding(query);
         console.log(`Searching news with embedding (dim: ${embedding.length}) for: "${query.substring(0, 30)}..."`);
@@ -479,18 +593,26 @@ export async function searchNews(query: string, limit = 15) {
 
         // 3. Lightweight lexical retrieval fallback (hybrid behavior without DB migration)
         const terms = getQueryTerms(query);
+        const lexicalTerms = Array.from(new Set([...terms, ...searchIntent.playerTokens]));
         const cutoff = toIsoDaysAgo(14);
         let lexicalRows: SearchNewsItem[] = [];
 
-        if (terms.length > 0) {
+        if (lexicalTerms.length > 0) {
             const orClauses: string[] = [];
-            for (const term of terms) {
+            for (const term of lexicalTerms) {
                 if (!term) continue;
                 orClauses.push(`title.ilike.%${term}%`);
                 orClauses.push(`summary.ilike.%${term}%`);
                 orClauses.push(`content.ilike.%${term}%`);
                 orClauses.push(`player_name.ilike.%${term}%`);
                 orClauses.push(`injury_status.ilike.%${term}%`);
+            }
+            for (const candidate of searchIntent.playerCandidates) {
+                if (!candidate) continue;
+                orClauses.push(`title.ilike.%${candidate}%`);
+                orClauses.push(`summary.ilike.%${candidate}%`);
+                orClauses.push(`content.ilike.%${candidate}%`);
+                orClauses.push(`player_name.ilike.%${candidate}%`);
             }
 
             if (orClauses.length > 0) {
@@ -528,11 +650,20 @@ export async function searchNews(query: string, limit = 15) {
             });
         }
 
-        const ranked = Array.from(merged.values())
-            .map(item => ({ item, score: computeHybridScore(item, terms) }))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, limit)
-            .map(({ item }) => item);
+        let rankedEntries = Array.from(merged.values())
+            .map(item => ({ item, score: computeHybridScore(item, terms, searchIntent) }))
+            .sort((a, b) => b.score - a.score);
+
+        if (searchIntent.isInjuryQuery && searchIntent.playerCandidates.length > 0) {
+            const playerAligned = rankedEntries.filter(entry => getPlayerMatchScore(entry.item, searchIntent) >= 0.5);
+            if (playerAligned.length > 0) {
+                rankedEntries = playerAligned;
+            } else {
+                rankedEntries = [];
+            }
+        }
+
+        const ranked = rankedEntries.slice(0, limit).map(({ item }) => item);
 
         console.log(`Hybrid RAG found ${ranked.length} items (vector=${vectorRows.length}, lexical=${lexicalRows.length}).`);
         return ranked;
@@ -554,4 +685,53 @@ export async function getLatestNews(limit = 20) {
         return [];
     }
     return data;
+}
+
+export async function searchPlayerStatusSnapshots(query: string, limit = 5): Promise<PlayerStatusSnapshotItem[]> {
+    const searchIntent = getSearchIntent(query);
+    const terms = getQueryTerms(query);
+    const lexicalTerms = Array.from(new Set([...terms, ...searchIntent.playerTokens]));
+
+    const orClauses: string[] = [];
+    for (const term of lexicalTerms) {
+        if (!term) continue;
+        orClauses.push(`player_name.ilike.%${term}%`);
+        orClauses.push(`injury_status.ilike.%${term}%`);
+        orClauses.push(`injury_type.ilike.%${term}%`);
+    }
+    for (const candidate of searchIntent.playerCandidates) {
+        if (!candidate) continue;
+        orClauses.push(`player_name.ilike.%${candidate}%`);
+    }
+
+    let queryBuilder = supabase
+        .from("player_status_snapshots")
+        .select("player_id,player_name,injury_status,injury_type,expected_return_date,last_news_date,injured,source,last_synced_at")
+        .order("last_news_date", { ascending: false, nullsFirst: false })
+        .order("last_synced_at", { ascending: false })
+        .limit(Math.max(1, Math.min(Math.floor(limit), 10)));
+
+    if (orClauses.length > 0) {
+        queryBuilder = queryBuilder.or(orClauses.join(","));
+    }
+
+    const { data, error } = await queryBuilder;
+    if (error) {
+        console.error("Supabase player status search error:", error);
+        return [];
+    }
+
+    const normalized = (data || [])
+        .map(normalizePlayerStatusRow)
+        .filter((item): item is PlayerStatusSnapshotItem => item !== null);
+
+    if (searchIntent.isInjuryQuery && searchIntent.playerCandidates.length > 0) {
+        const filtered = normalized.filter(item => {
+            const candidate = normalizeForMatch(item.player_name || "");
+            return searchIntent.playerCandidates.some(player => candidate.includes(player));
+        });
+        return filtered.slice(0, limit);
+    }
+
+    return normalized.slice(0, limit);
 }

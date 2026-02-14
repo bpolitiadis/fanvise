@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAndIngestNews } from "@/services/news.service";
+import { fetchAndIngestPlayerStatusesFromLeague } from "@/services/player-status.service";
 import { EspnClient } from "@/lib/espn/client";
 import type { EspnTeam } from "@/lib/espn/types";
 
@@ -55,7 +56,15 @@ export async function POST(req: NextRequest) {
             count = await fetchAndIngestNews(watchlist, ingestionLimit, dryRun);
         }
 
-        return NextResponse.json({ success: true, count, watchlistSize: watchlist.length, backfill: !!backfill });
+        const playerStatusCount = await fetchAndIngestPlayerStatusesFromLeague();
+
+        return NextResponse.json({
+            success: true,
+            count,
+            playerStatusCount,
+            watchlistSize: watchlist.length,
+            backfill: !!backfill,
+        });
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Internal server error during sync";
         console.error("[Sync API] Critical error:", errorMessage);

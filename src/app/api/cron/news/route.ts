@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchAndIngestNews } from "@/services/news.service";
+import { fetchAndIngestPlayerStatusesFromLeague } from "@/services/player-status.service";
 
 const toSafeCronLimit = (value: string | undefined) => {
     const parsed = Number(value ?? "12");
@@ -28,7 +29,8 @@ export async function GET(req: Request) {
 
         const limit = toSafeCronLimit(process.env.NEWS_CRON_LIMIT);
         const count = await fetchAndIngestNews([], limit);
-        return NextResponse.json({ success: true, count, limit });
+        const playerStatusCount = await fetchAndIngestPlayerStatusesFromLeague();
+        return NextResponse.json({ success: true, count, playerStatusCount, limit });
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
         console.error("[Cron News] ingestion failed:", error);
