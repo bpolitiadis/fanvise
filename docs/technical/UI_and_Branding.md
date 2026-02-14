@@ -33,3 +33,9 @@ A "single-pane-of-glass" view for quick decisions.
 
 ### 3. Chat Interface (`src/components/chat/chat-interface.tsx`)
 A fluid, streaming interface for deep strategic analysis. Includes support for "Intelligent Widgets" like Player Cards and Stat Grids within the message stream.
+
+### 4. League Overview (`src/app/league/page.tsx` + `src/components/league/league-overview.tsx`)
+The league info route now uses a thin page container plus a reusable view component.
+- **Container responsibility**: `src/app/league/page.tsx` handles perspective loading, error states, and retry behavior.
+- **View responsibility**: `src/components/league/league-overview.tsx` renders the full league UI (header, draft details, draft board, scoring matrix, teams grid).
+- **Refactor goal**: keep domain formatting logic close to the view while reducing page-level complexity and improving future modifiability.
