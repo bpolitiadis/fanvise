@@ -15,6 +15,8 @@ FanVise leverages a unique **Environment-Adaptive RAG** architecture, allowing y
 
 For detailed installation instructions, prerequisites (Docker, Supabase, Ollama), and configuration, please refer to our **[Getting Started Guide](./GETTING_STARTED.md)**.
 
+Package manager standard: this project uses `pnpm` (via Corepack) instead of `npm` for all install/run/test commands.
+
 ## 📚 Documentation
 
 We maintain comprehensive documentation for developers and contributors:
@@ -41,7 +43,7 @@ We maintain comprehensive documentation for developers and contributors:
 
 The repository includes a standalone black-box RAG evaluation suite in `fanvise_eval/`.
 
-*   Install and run from the root with: `npm run test:ai`
+*   Install and run from the root with: `pnpm test:ai`
 *   Evaluations target `http://localhost:3000/api/chat`
 *   Dataset source: `fanvise_eval/golden_dataset.json`
 *   Judge provider is configurable (`none`, `gemini`, `openai`, `ollama`, `local`) via `fanvise_eval/.env`.
@@ -50,9 +52,10 @@ The repository includes a standalone black-box RAG evaluation suite in `fanvise_
 
 Operational workflows are handled via tracked scripts in `src/ops/`:
 
-*   `npm run news:ingest` - Run standard news ingestion.
-*   `npm run news:ingest:historical` - Run historical backfill (`NEWS_BACKFILL_PAGES` configurable).
-*   `npm run league:sync` - Sync league metadata and transactions from ESPN to Supabase.
+*   `pnpm news:ingest` - Run standard news ingestion.
+*   `pnpm news:ingest:historical` - Run historical backfill (`NEWS_BACKFILL_PAGES` configurable).
+*   `pnpm league:sync` - Sync league metadata and transactions from ESPN to Supabase.
+*   `pnpm leaders:sync` - Sync daily leaders (per scoring period) into Supabase (`DAILY_LEADERS_DATE=YYYY-MM-DD` optional override).
 
 Production runs automated lightweight news ingestion twice daily via GitHub Actions hitting `/api/cron/news`:
 
@@ -60,10 +63,11 @@ Production runs automated lightweight news ingestion twice daily via GitHub Acti
 *   `NEWS_CRON_LIMIT` controls max items per run (default `12`, capped at `25`).
 *   Optional hardening: set `CRON_SECRET` in Vercel and in GitHub Secrets.
 *   Optional override: set `FANVISE_PROD_URL` in GitHub Secrets (defaults to `https://fanvise.vercel.app`).
+*   The same cron now also refreshes `player_status_snapshots` and `daily_leaders` for yesterday.
 
 Integration verification lives in `tests/integration/` and is environment-gated:
 
-*   `npm run test:integration` - Runs integration tests that require `RUN_INTEGRATION_TESTS=true`.
-*   `npm run test:integration:live-feeds` - Also enables live RSS reachability checks.
+*   `pnpm test:integration` - Runs integration tests that require `RUN_INTEGRATION_TESTS=true`.
+*   `pnpm test:integration:live-feeds` - Also enables live RSS reachability checks.
 
 This keeps one-off debugging out of production workflows and moves repeatable checks into test cases.

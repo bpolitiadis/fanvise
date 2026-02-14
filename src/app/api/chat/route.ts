@@ -5,6 +5,10 @@ import type { SupportedLanguage } from "@/prompts/types";
 import { searchNews } from "@/services/news.service";
 import { authorizePerspectiveScope } from "@/utils/auth/perspective-authorization";
 
+// Chat requests can include multiple upstream calls (Supabase + ESPN + Gemini).
+// Keep enough headroom in production to avoid premature serverless termination.
+export const maxDuration = 60;
+
 interface RequestMessage {
     role: "user" | "assistant";
     content: string;
@@ -129,6 +133,10 @@ export async function POST(req: NextRequest) {
                     }
                 } catch (err) {
                     console.error("[Chat API] Stream error:", err);
+                    const fallback = isRateLimitError(err)
+                        ? "⚠️ Strategic Hold: FanVise is currently high in demand. Please retry in a few seconds."
+                        : "⚠️ Temporary issue while generating your response. Please retry.";
+                    controller.enqueue(encoder.encode(fallback));
                 } finally {
                     controller.close();
                 }

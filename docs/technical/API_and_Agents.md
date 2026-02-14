@@ -7,7 +7,7 @@ The intelligence of FanVise is powered by a centralized **AI Service** and a ded
 The central gateway for all model interactions. It provides a provider-agnostic interface for:
 - **Streaming Responses**: Optimized for real-time chat interactions.
 - **Provider Switching**: Seamlessly toggles between **Google Gemini** (Cloud) and **Ollama** (Local/DeepSeek) based on environment configuration.
-- **Task Specialization**: Dedicated handlers for text embeddings (`nomic-embed` or `text-embedding-004`) and structured intelligence extraction.
+- **Task Specialization**: Dedicated handlers for text embeddings (`nomic-embed` or `gemini-embedding-001`) and structured intelligence extraction.
 
 ## Prompt Engine (`prompts/index.ts`)
 
@@ -20,8 +20,9 @@ A sophisticated layer that builds high-fidelity, context-rich system instruction
 The **Central Brain** of the application. It orchestrates the entire "FanVise Strategist" workflow by:
 1.  **RAG Retrieval**: Calling `NewsService` to fetch relevant news and injury reports.
 2.  **Context Building**: Calling `LeagueService` to build a snapshot of the user's specific fantasy environment.
-3.  **Prompt Engineering**: Using the `Prompt Engine` to synthesize data into a strict system instruction.
-4.  **Generative Execution**: Delegating the final prompt to the `AI Service` for streaming generation.
+3.  **Daily Leaders Context**: Calling `DailyLeadersService` to inject per-period performance data ("who shined yesterday?", "my team yesterday") when the query matches daily-leader intents.
+4.  **Prompt Engineering**: Using the `Prompt Engine` to synthesize data into a strict system instruction.
+5.  **Generative Execution**: Delegating the final prompt to the `AI Service` for streaming generation.
 
 ## Chat API (`src/app/api/chat/route.ts`)
 
@@ -32,10 +33,11 @@ A thin controller layer that receives user input and delegates execution to the 
 -   **Eval Observability (Dev Only)**: when `evalMode=true` and `NODE_ENV=development`, the route can return `debug_context` for black-box faithfulness evaluation.
 
 ## Key Services
-- **Intelligence Service (`src/services/intelligence.service.ts`)**: Orchestrates RAG, context building, and prompt generation.
+- **Intelligence Service (`src/services/intelligence.service.ts`)**: Orchestrates RAG, context building, daily leaders context, and prompt generation.
 - **League Service (`src/services/league.service.ts`)**: Aggregates ESPN API data and Supabase records into a unified "Intelligence Snapshot".
 - **News Service (`src/services/news.service.ts`)**: Manages the RAG pipeline, including RSS ingestion, AI intelligence extraction, and vector storage.
-- **ESPN Client (`src/lib/espn/client.ts`)**: The core connector for fetching team and league data.
+- **Daily Leaders Service (`src/services/daily-leaders.service.ts`)**: Syncs and serves per-scoring-period player performance from ESPN; powers "who shined yesterday?" and "my team yesterday" chatbot context.
+- **ESPN Client (`src/lib/espn/client.ts`)**: The core connector for fetching team, league, and daily leaders data.
 
 ## Evaluation Agent (Standalone)
 

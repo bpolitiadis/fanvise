@@ -7,6 +7,7 @@ FanVise uses Supabase (PostgreSQL) as its primary data store. The schema is opti
 ### Leagues & Teams
 - **`leagues`**: Central repository for ESPN league metadata, including `scoring_settings`, `roster_settings`, and `draft_detail` (stored as JSONB).
 - **`user_leagues`**: Junction table linking authenticated users to their specific teams and leagues.
+- **`daily_leaders`**: Per-scoring-period player performance snapshots used for "who shined yesterday?", "my team yesterday", and free-agent leader context in chat.
 
 ### Intelligence Layer (RAG)
 - **`news_items`**: Stores scraped news articles and structured intelligence.

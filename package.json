@@ -15,6 +15,7 @@
     "news:ingest": "npx tsx src/ops/news-ingest.ts",
     "news:ingest:historical": "npx tsx src/ops/news-ingest-historical.ts",
     "league:sync": "npx tsx src/ops/sync-league.ts",
+    "leaders:sync": "npx tsx src/ops/sync-daily-leaders.ts",
     "test:ai": "cd fanvise_eval && ([ -d .venv ] || python3 -m venv .venv) && .venv/bin/python -m pip install -r requirements.txt && .venv/bin/python test_fanvise.py"
   },
   "dependencies": {

@@ -246,6 +246,71 @@ export class EspnClient {
     }
 
     /**
+     * Fetches top player performances for a single scoring period.
+     *
+     * ESPN does not expose a stable public "leaders" endpoint contract, so this
+     * uses `kona_player_info` with sorting/filtering tuned for per-period totals.
+     */
+    async getLeadersForScoringPeriod(scoringPeriodId: number, limit: number = 200) {
+        const periodId = Math.max(1, Math.floor(scoringPeriodId));
+        const cappedLimit = Math.max(1, Math.min(Math.floor(limit), 500));
+        const url = this.buildLeagueUrl(["kona_player_info"], { scoringPeriodId: periodId });
+
+        console.log(`Fetching Daily Leaders (scoringPeriodId=${periodId}): ${url}`);
+
+        const filters = {
+            players: {
+                limit: cappedLimit,
+                // Include both rostered and unrostered pools so we can answer:
+                // - "who shined yesterday?"
+                // - "which free agents shined yesterday?"
+                filterStatus: {
+                    value: ["FREEAGENT", "WAIVERS", "ONTEAM"],
+                },
+                // Encourage ESPN to return single-period performance buckets.
+                filterStatsForTopScoringPeriodIds: {
+                    value: [periodId],
+                },
+                filterStatsForSourceIds: {
+                    value: [0, 1],
+                },
+                filterStatsForSplitTypeIds: {
+                    value: [1],
+                },
+                sortAppliedStatTotal: {
+                    sortAsc: false,
+                    sortPriority: 1,
+                },
+            },
+        };
+
+        const headers = this.getHeaders() as Record<string, string>;
+        headers["x-fantasy-filter"] = JSON.stringify(filters);
+        headers["x-fantasy-platform"] = "espn-fantasy-web";
+        headers["x-fantasy-source"] = "kona";
+
+        const response = await fetch(url, {
+            headers,
+            next: { revalidate: 300 },
+        });
+
+        if (!response.ok) {
+            const text = await response.text().catch(() => "");
+            console.error(`ESPN Leaders Error (${response.status}) for scoringPeriodId=${periodId}:`, text.substring(0, 500));
+            throw new Error(`ESPN Leaders Error: ${response.status} ${response.statusText}`);
+        }
+
+        const text = await response.text();
+        try {
+            const parsed = JSON.parse(text);
+            return Array.isArray(parsed?.players) ? parsed.players : [];
+        } catch {
+            console.error(`Failed to parse ESPN leaders response for scoringPeriodId=${periodId}:`, text.substring(0, 500));
+            throw new Error(`Invalid JSON from ESPN leaders: ${text.substring(0, 200)}...`);
+        }
+    }
+
+    /**
      * Fetches the ESPN player card payload for a single player.
      * This endpoint includes canonical injury metadata used by fantasy UI.
      */

@@ -18,6 +18,7 @@ Deep dives into the system architecture and implementation details.
 *   **[Models & Environments](./technical/Models_and_Environments.md)**: Explanation of the Dual-Environment strategy (Cloud/Gemini vs. Local/Ollama).
 *   **[RAG Pipeline](./technical/RAG_Pipeline.md)**: How news retrieval, embedding, and generation works.
 *   **[Database Schema](./technical/Database.md)**: Supabase Postgres schema design.
+*   **[Daily Leaders Storage Design](./technical/Daily_Leaders_Storage_Design.md)**: Daily leaders data model, ESPN ingestion strategy, and chatbot integration notes.
 *   **[UI & Branding](./technical/UI_and_Branding.md)**: Design system, components, and theming.
 
 ### Agents & Intelligence
@@ -38,4 +39,4 @@ Deep dives into the system architecture and implementation details.
 
 *   **FanVise Combine**: Standalone black-box RAG evaluator in `../fanvise_eval/`.
 *   Targets the public API endpoint `http://localhost:3000/api/chat`.
-*   Run via root script: `npm run test:ai`.
+*   Run via root script: `pnpm test:ai`.

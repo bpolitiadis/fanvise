@@ -19,6 +19,7 @@ import { generateStreamingResponse } from "@/services/ai.service";
 import type { ChatMessage } from "@/types/ai";
 import { buildIntelligenceSnapshot } from "@/services/league.service";
 import { searchNews, searchPlayerStatusSnapshots } from "@/services/news.service";
+import { buildDailyLeadersContext } from "@/services/daily-leaders.service";
 
 interface NewsItem {
     id?: string | null;
@@ -55,6 +56,26 @@ const PLAYER_QUERY_NOISE = new Set([
 ]);
 
 const normalizeForMatch = (value: string) => value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+const NEWS_CONTEXT_TIMEOUT_MS = Number(process.env.NEWS_CONTEXT_TIMEOUT_MS ?? 12000);
+const SNAPSHOT_CONTEXT_TIMEOUT_MS = Number(process.env.SNAPSHOT_CONTEXT_TIMEOUT_MS ?? 12000);
+const PLAYER_STATUS_TIMEOUT_MS = Number(process.env.PLAYER_STATUS_TIMEOUT_MS ?? 8000);
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise<T>((_, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+                }, timeoutMs);
+            }),
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+};
 
 const isInjuryOrAvailabilityQuery = (message: string): boolean => {
     const normalized = message.toLowerCase();
@@ -102,13 +123,21 @@ export async function generateStrategicResponse(
 
     const newsPromise = prefetchedNewsItems
         ? Promise.resolve(prefetchedNewsItems)
-        : searchNews(currentMessage);
+        : withTimeout(searchNews(currentMessage), NEWS_CONTEXT_TIMEOUT_MS, "News search");
 
     const snapshotPromise = hasPerspective
-        ? buildIntelligenceSnapshot(activeLeagueId as string, activeTeamId as string)
+        ? withTimeout(
+            buildIntelligenceSnapshot(activeLeagueId as string, activeTeamId as string),
+            SNAPSHOT_CONTEXT_TIMEOUT_MS,
+            "League snapshot build"
+        )
         : Promise.resolve(null);
 
-    const playerStatusPromise = searchPlayerStatusSnapshots(currentMessage, 5);
+    const playerStatusPromise = withTimeout(
+        searchPlayerStatusSnapshots(currentMessage, 5),
+        PLAYER_STATUS_TIMEOUT_MS,
+        "Player status search"
+    );
 
     const [newsResult, snapshotResult, playerStatusResult] = await Promise.allSettled([
         newsPromise,
@@ -210,6 +239,7 @@ export async function generateStrategicResponse(
         }
     } else if (newsResult.status === "rejected") {
         console.error("[Intelligence Service] Failed to fetch news:", newsResult.reason);
+        newsContext = "STATUS_GUARDRAIL: News context unavailable due to timeout/error. If injury certainty is required, respond exactly: \"Insufficient verified status data.\"";
     } else if (playerStatusItems.length > 0) {
         const statusContext = playerStatusItems
             .map((status) => {
@@ -239,6 +269,27 @@ export async function generateStrategicResponse(
             const snapshot = snapshotResult.value;
             console.log(`[Intelligence Service] Snapshot ready for League ${activeLeagueId}, Team ${activeTeamId}`);
 
+            const myRosterPlayerIds = (snapshot.myTeam.roster || [])
+                .map((player) => Number(player.id))
+                .filter((id) => Number.isFinite(id))
+                .map((id) => Math.floor(id));
+
+            let dailyLeadersContext = "";
+            try {
+                dailyLeadersContext = await buildDailyLeadersContext({
+                    query: currentMessage,
+                    leagueId: activeLeagueId as string,
+                    seasonId: snapshot.league.seasonId,
+                    myRosterPlayerIds,
+                });
+            } catch (leadersError) {
+                console.warn("[Intelligence Service] Daily leaders context build failed:", leadersError);
+            }
+
+            const combinedNewsContext = [newsContext, dailyLeadersContext]
+                .filter((section) => Boolean(section && section.trim().length > 0))
+                .join("\n\n");
+
             // Convert snapshot to PromptContext
             const promptContext = contextFromSnapshot(
                 {
@@ -254,7 +305,7 @@ export async function generateStrategicResponse(
                     freeAgents: snapshot.freeAgents,
                 },
                 language,
-                newsContext ? `Recent News & Intelligence:\n${newsContext}` : undefined
+                combinedNewsContext ? `Recent News & Intelligence:\n${combinedNewsContext}` : undefined
             );
 
             // Generate system prompt using the Prompt Engine
