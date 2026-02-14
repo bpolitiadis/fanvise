@@ -51,6 +51,21 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
     const draftDetailCandidate = toJsonObject(data.draftDetail);
     const fallbackDraftFromSettings = toJsonObject((settings as Record<string, unknown>).draftSettings);
 
+    const playerNameById = new Map<number, string>();
+    for (const team of data.teams || []) {
+        const rosterEntries = team.roster?.entries || team.rosterForCurrentScoringPeriod?.entries || [];
+        for (const entry of rosterEntries) {
+            const player = entry.playerPoolEntry?.player;
+            if (!player) continue;
+            if (typeof player.id !== "number") continue;
+            const fullName = player.fullName || `${player.firstName || ""} ${player.lastName || ""}`.trim();
+            if (!fullName) continue;
+            if (!playerNameById.has(player.id)) {
+                playerNameById.set(player.id, fullName);
+            }
+        }
+    }
+
     // Extract teams
     // data.teams usually contains the team info
     // data.members usually contains the manager info
@@ -77,14 +92,33 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
         };
     });
 
+    const resolvedDraftDetail = Object.keys(draftDetailCandidate).length > 0
+        ? draftDetailCandidate
+        : fallbackDraftFromSettings;
+
+    const draftPicks = (resolvedDraftDetail as { picks?: unknown }).picks;
+    if (Array.isArray(draftPicks)) {
+        (resolvedDraftDetail as { picks: unknown[] }).picks = draftPicks.map((pick) => {
+            if (!pick || typeof pick !== "object") return pick;
+            const typedPick = pick as { playerId?: unknown; playerName?: unknown };
+            const playerId = typeof typedPick.playerId === "number" ? typedPick.playerId : null;
+            const mappedPlayerName = playerId !== null ? playerNameById.get(playerId) : undefined;
+            if (!mappedPlayerName) return pick;
+            return {
+                ...typedPick,
+                playerName: typeof typedPick.playerName === "string" && typedPick.playerName.trim().length > 0
+                    ? typedPick.playerName
+                    : mappedPlayerName,
+            };
+        });
+    }
+
     return {
         name,
         scoringSettings,
         rosterSettings,
         teams,
-        draftDetail: Object.keys(draftDetailCandidate).length > 0
-            ? draftDetailCandidate
-            : fallbackDraftFromSettings,
+        draftDetail: resolvedDraftDetail,
         positionalRatings: toJsonObject(data.positionalRatings),
         liveScoring: toJsonObject(data.liveScoring)
     };
