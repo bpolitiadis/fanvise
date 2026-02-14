@@ -63,4 +63,20 @@ FanVise now separates league synchronization from news intelligence ingestion so
 - **League Sync (separate from news):**
   - Routes: `POST /api/sync`, `POST /api/sync/player-status`, `POST /api/sync/daily-leaders`
   - Scope: ESPN league metadata, transactions, player status snapshots, and daily leaders.
+  - Single-league mode: league/season are read from `NEXT_PUBLIC_ESPN_LEAGUE_ID` and `NEXT_PUBLIC_ESPN_SEASON_ID`.
+  - Note: daily leaders sync now performs a best-effort schedule sync if no scoring period can be resolved yet.
   - UI: Dashboard `Sync League` button.
+
+## Production Mode Notes (Current)
+
+- **Current live mode**: single-league, env-driven perspective (not full multi-user `profiles`/`user_leagues` flow).
+- **Public perspective fallback**: enabled via `ALLOW_PUBLIC_PERSPECTIVE_FALLBACK=true` to keep chat context available without auth mappings.
+- **Gemini retry cap**: `RETRY_MAX_DELAY_MS` is used to prevent long 429 backoffs from causing runtime hangs.
+
+## Rollback / Future Reversal
+
+When multi-user auth is fully implemented in production, revert this temporary single-league posture:
+
+1. Set `ALLOW_PUBLIC_PERSPECTIVE_FALLBACK=false`.
+2. Keep `user_leagues` populated for authenticated users and enforce membership-only perspective.
+3. Optionally remove first-team fallback defaults in client perspective resolution.

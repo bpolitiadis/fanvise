@@ -67,5 +67,19 @@ Create a `.env.local` file with the following variables to configure the intelli
 | :--- | :--- |
 | `ESPN_SWID` | Private ESPN API Session ID (SWID). |
 | `ESPN_S2` | Private ESPN API Session Cookie (S2). |
+| `NEXT_PUBLIC_ESPN_LEAGUE_ID` | Default league ID used by sync and perspective resolution in single-league mode. |
+| `NEXT_PUBLIC_ESPN_SEASON_ID` | Active ESPN season used by schedule and leaders sync jobs. |
+| `ALLOW_PUBLIC_PERSPECTIVE_FALLBACK` | Set to `true` in single-league production when auth/user_leagues are not yet enabled. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL. |
 | `SUPABASE_SERVICE_ROLE_KEY`| Supabase Service Key (used for news ingestion). |
+
+### Production Stability Controls
+| Variable | Description | Suggested Value |
+| :--- | :--- | :--- |
+| `RETRY_MAX_DELAY_MS` | Caps 429 retry backoff to avoid request hangs/timeouts in serverless runtimes. | `3000` |
+
+### Rollback Note (Future Multi-User)
+When production moves to full multi-user auth (`auth.users` + `profiles` + `user_leagues`), switch:
+
+- `ALLOW_PUBLIC_PERSPECTIVE_FALLBACK=false`
+- Keep server-side membership enforcement as the only perspective authorization path.

@@ -45,6 +45,11 @@ const normalizeTeams = (teams: Team[] | undefined): Team[] => {
   }))
 }
 
+const resolveDefaultTeam = (teams: Team[]): Team | null => {
+  if (!Array.isArray(teams) || teams.length === 0) return null
+  return teams.find((team) => team.is_user_owned) || teams[0] || null
+}
+
 interface PerspectiveState {
   activeTeamId: string | null
   activeLeagueId: string | null
@@ -136,25 +141,26 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
           console.warn(`[Perspective] Team ${teamId} not found in league ${leagueId}. Clearing stale perspective.`)
           localStorage.removeItem(STORAGE_KEY)
           
-          // Try to fallback to user's own team if available in the team list
-          const userTeam = teams.find(t => t.is_user_owned)
-          if (userTeam) {
-            console.log(`[Perspective] Defaulting to user-owned team: ${userTeam.name}`)
-            setActiveTeam(userTeam)
-            setActiveTeamId(userTeam.id)
-            localStorage.setItem(STORAGE_KEY, userTeam.id)
+          // Single-league fallback: user-owned team if present, otherwise first team.
+          const fallbackTeam = resolveDefaultTeam(teams)
+          if (fallbackTeam) {
+            console.log(`[Perspective] Defaulting to fallback team: ${fallbackTeam.name}`)
+            setActiveTeam(fallbackTeam)
+            setActiveTeamId(fallbackTeam.id)
+            localStorage.setItem(STORAGE_KEY, fallbackTeam.id)
           } else {
             setActiveTeam(null)
             setActiveTeamId(null)
           }
         }
       } else {
-        // No teamId provided, try to default to user-owned team
-        const userTeam = teams.find(t => t.is_user_owned)
-        if (userTeam) {
-          console.log(`[Perspective] Defaulting to user-owned team: ${userTeam.name}`)
-          setActiveTeam(userTeam)
-          setActiveTeamId(userTeam.id)
+        // No teamId provided, default to user-owned team or first team.
+        const fallbackTeam = resolveDefaultTeam(teams)
+        if (fallbackTeam) {
+          console.log(`[Perspective] Defaulting to fallback team: ${fallbackTeam.name}`)
+          setActiveTeam(fallbackTeam)
+          setActiveTeamId(fallbackTeam.id)
+          localStorage.setItem(STORAGE_KEY, fallbackTeam.id)
         } else {
           setActiveTeam(null)
           setActiveTeamId(null)

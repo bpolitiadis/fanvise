@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncDailyLeadersForDate } from "@/services/daily-leaders.service";
+import { ScheduleService } from "@/services/schedule.service";
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,10 +26,23 @@ export async function POST(req: NextRequest) {
 
     const result = await syncDailyLeadersForDate(leagueId, seasonId, date);
     if (!result) {
-      return NextResponse.json(
-        { error: "Could not resolve scoring period for the requested date." },
-        { status: 404 }
-      );
+      // Best-effort recovery for first-time environments where nba_schedule is empty.
+      // We sync schedule and retry once before returning a 404.
+      const scheduleService = new ScheduleService();
+      await scheduleService.syncSchedule(seasonId);
+      const retryResult = await syncDailyLeadersForDate(leagueId, seasonId, date);
+      if (!retryResult) {
+        return NextResponse.json(
+          { error: "Could not resolve scoring period for the requested date." },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Synced ${retryResult.count} daily leaders for ${retryResult.periodDate} (scoring period ${retryResult.scoringPeriodId}).`,
+        ...retryResult,
+      });
     }
 
     return NextResponse.json({

@@ -68,6 +68,45 @@ const resolvePublicPerspective = async (
     };
 };
 
+const resolveDefaultPublicPerspective = async (
+    activeLeagueId?: string | null
+): Promise<AuthorizedPerspective | null> => {
+    const leagueId = activeLeagueId ?? getDefaultLeagueId();
+    if (!leagueId) return null;
+
+    const supabase = await createClient();
+    const { data: leagueRecord, error } = await supabase
+        .from("leagues")
+        .select("league_id, teams")
+        .eq("league_id", leagueId)
+        .maybeSingle();
+
+    if (error || !leagueRecord) {
+        return null;
+    }
+
+    const teams = Array.isArray(leagueRecord.teams) ? leagueRecord.teams : [];
+    const preferredTeam = teams.find((team) => {
+        if (!team || typeof team !== "object") return false;
+        const candidate = team as { is_user_owned?: unknown };
+        return Boolean(candidate.is_user_owned);
+    }) ?? teams[0];
+
+    if (!preferredTeam || typeof preferredTeam !== "object") {
+        return null;
+    }
+
+    const candidate = preferredTeam as { id?: unknown };
+    const teamId = candidate.id ? String(candidate.id) : "";
+    if (!teamId) return null;
+
+    return {
+        activeTeamId: teamId,
+        activeLeagueId: String(leagueRecord.league_id),
+        status: "authorized_public",
+    };
+};
+
 /**
  * Validates whether the requested perspective belongs to the authenticated user.
  * Falls back to generic context when the user is not authorized.
@@ -76,7 +115,19 @@ export async function authorizePerspectiveScope(
     input: PerspectiveInput
 ): Promise<AuthorizedPerspective> {
     const { activeTeamId, activeLeagueId } = input;
-    if (!activeTeamId) {
+    const supabase = await createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
+    const requestedTeamId = activeTeamId ? String(activeTeamId) : undefined;
+
+    if (!requestedTeamId) {
+        if (canUsePublicPerspectiveFallback()) {
+            const defaultPublicPerspective = await resolveDefaultPublicPerspective(activeLeagueId);
+            if (defaultPublicPerspective) {
+                return defaultPublicPerspective;
+            }
+        }
+
         return {
             activeTeamId: undefined,
             activeLeagueId: undefined,
@@ -84,13 +135,9 @@ export async function authorizePerspectiveScope(
         };
     }
 
-    const supabase = await createClient();
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData.user?.id;
-
     if (!userId) {
         if (canUsePublicPerspectiveFallback()) {
-            const publicPerspective = await resolvePublicPerspective(activeTeamId, activeLeagueId);
+            const publicPerspective = await resolvePublicPerspective(requestedTeamId, activeLeagueId);
             if (publicPerspective) {
                 return publicPerspective;
             }
@@ -107,7 +154,7 @@ export async function authorizePerspectiveScope(
         .from("user_leagues")
         .select("league_id, team_id, is_active")
         .eq("user_id", userId)
-        .eq("team_id", activeTeamId)
+        .eq("team_id", requestedTeamId)
         .order("is_active", { ascending: false })
         .limit(1)
         .maybeSingle();
