@@ -58,20 +58,20 @@ Provider-specific keys:
 From repository root:
 
 ```bash
-npm run test:ai
+pnpm test:ai
 ```
 
 Example modes:
 
 ```bash
 # Deterministic-only mode (no LLM judge)
-FANVISE_JUDGE_PROVIDER=none npm run test:ai
+FANVISE_JUDGE_PROVIDER=none pnpm test:ai
 
 # Local judge mode
-FANVISE_JUDGE_PROVIDER=ollama FANVISE_JUDGE_MODEL=qwen2.5:14b-instruct npm run test:ai
+FANVISE_JUDGE_PROVIDER=ollama FANVISE_JUDGE_MODEL=qwen2.5:14b-instruct pnpm test:ai
 
 # Periodic Gemini judge mode
-FANVISE_JUDGE_PROVIDER=gemini FANVISE_JUDGE_MODEL=gemini-1.5-flash GOOGLE_API_KEY=<REDACTED> npm run test:ai
+FANVISE_JUDGE_PROVIDER=gemini FANVISE_JUDGE_MODEL=gemini-1.5-flash GOOGLE_API_KEY=<REDACTED> pnpm test:ai
 ```
 
 ## Metrics
@@ -100,7 +100,7 @@ Default thresholds:
 You can override thresholds at runtime:
 
 ```bash
-FANVISE_METRIC_THRESHOLDS='{"faithfulness":0.8,"actionability":0.8}' npm run test:ai
+FANVISE_METRIC_THRESHOLDS='{"faithfulness":0.8,"actionability":0.8}' pnpm test:ai
 ```
 
 ## Dataset Fields (v2+)

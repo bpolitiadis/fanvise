@@ -44,7 +44,7 @@ We implement **Path-Based Deployments** to minimize the blast radius of changes.
 ### A. Frontend Pipeline (Vercel/Cloud Run)
 
 * **Trigger:** Push to `main` involving changes in `/src/**` or `root`.
-* **Validation:** `npm run lint` and `npm run test` (Vitest) must pass.
+* **Validation:** `pnpm lint` and `pnpm test` (Vitest) must pass.
 * **Reliability Check:** Automated Vercel "Preview" deployments for QA smoke testing.
 
 ### B. Backend Pipeline (Google Cloud Build)

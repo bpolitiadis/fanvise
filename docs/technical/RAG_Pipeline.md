@@ -39,6 +39,6 @@ Every ingested article is processed by the AI Service to extract structured meta
 ## 3. Retrieval & Grounding
 
 During a chat session, the system performs a semantic search using the user's query.
-- **Embedding Model**: Defaults to `text-embedding-004` (Gemini) or `nomic-embed-text` (Local).
+- **Embedding Model**: Defaults to `gemini-embedding-001` (Gemini) or `nomic-embed-text` (Local).
 - **Match Strategy**: Uses Cosine Similarity via the `match_news_documents` RPC.
 - **Grounding Rules**: The `FanVise Strategist` persona is instructed to ignore its pre-trained knowledge and *only* use the retrieved intelligence items to form responses. Trash talk remains data-anchored to prevent hallucinations.

@@ -83,4 +83,4 @@ graph TD
 ## 4. Simplification Benefits
 -   **Single Repository/Language**: Everything is TypeScript. No context switching between Python/node.
 -   **Lower Latency**: No cold starts from separate Cloud Functions. Direct database access.
--   **Easier Debugging**: Full stack local development (`npm run dev`) works out-of-the-box without mocking complex cloud infrastructure.
+-   **Easier Debugging**: Full stack local development (`pnpm dev`) works out-of-the-box without mocking complex cloud infrastructure.

@@ -9,7 +9,7 @@ Before you begin, ensure you have the following installed on your machine:
 1.  **Node.js & pnpm**
     *   **Node.js**: Version 20 or higher is required.
     *   **pnpm**: We use pnpm for package management.
-    *   *Installation:* `corepack enable` (if using modern Node) or `npm install -g pnpm`.
+    *   *Installation:* `corepack enable && corepack prepare pnpm@latest --activate`.
 
 2.  **Docker**
     *   Required to run the local Supabase instance.
@@ -62,7 +62,7 @@ Before you begin, ensure you have the following installed on your machine:
     # --- AI Configuration (Cloud - Gemini) ---
     GOOGLE_API_KEY=your_gemini_api_key
     GEMINI_MODEL=gemini-2.0-flash
-    GEMINI_EMBEDDING_MODEL=text-embedding-004
+    GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 
     # --- AI Configuration (Local - Ollama) ---
     # Set to 'true' to use local Ollama models instead of Gemini

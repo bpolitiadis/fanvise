@@ -47,7 +47,7 @@ Secondary contributing causes:
 3. **Ingestion reliability issues**  
    Live ingest run observed intermittent `Ollama Embedding Error: 500`, which can skip inserts.
 4. **Operational script fragility**  
-   `npm run news:ingest` path can fail from env/import order in script execution flow.
+   `pnpm news:ingest` path can fail from env/import order in script execution flow.
 
 ## Evidence Snapshot
 

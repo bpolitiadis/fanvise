@@ -9,7 +9,7 @@ The system is controlled via the `AI Service` (`src/services/ai.service.ts`), wh
 ### 1. Google Gemini (Cloud)
 Used for production and high-scale intelligence extraction.
 - **Core Model**: `gemini-2.0-flash` (Optimized for speed/latency).
-- **Embedding Model**: `text-embedding-004`.
+- **Embedding Model**: `gemini-embedding-001`.
 - **Key Features**: Native JSON mode for intelligence extraction, high context window.
 
 ### 2. Ollama (Local)
@@ -59,7 +59,7 @@ Create a `.env.local` file with the following variables to configure the intelli
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `EMBEDDING_PROVIDER` | `gemini` or `ollama`. | `gemini` |
-| `GEMINI_EMBEDDING_MODEL`| Model for generating vector embeddings. | `text-embedding-004` |
+| `GEMINI_EMBEDDING_MODEL`| Model for generating vector embeddings. | `gemini-embedding-001` |
 | `OLLAMA_EMBEDDING_MODEL`| Local embedding model name. | `nomic-embed-text` |
 
 ### External Integrations

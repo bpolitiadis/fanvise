@@ -138,13 +138,13 @@ Suggested thresholds:
 
 #### PR Gate (fast)
 - Run deterministic checks + no-judge mode:
-  - `FANVISE_JUDGE_PROVIDER=none npm run test:ai`
+  - `FANVISE_JUDGE_PROVIDER=none pnpm test:ai`
 - Fail on:
   - any critical-case deterministic failure.
 
 #### Nightly / Pre-release Gate (high confidence)
 - Run with Gemini judge:
-  - `FANVISE_JUDGE_PROVIDER=gemini FANVISE_JUDGE_MODEL=gemini-2.0-flash npm run test:ai`
+  - `FANVISE_JUDGE_PROVIDER=gemini FANVISE_JUDGE_MODEL=gemini-2.0-flash pnpm test:ai`
 - Fail on:
   - any critical failure,
   - metric thresholds below targets.

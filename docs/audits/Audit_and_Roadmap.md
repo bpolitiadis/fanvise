@@ -13,7 +13,7 @@ This document summarizes the current state of the FanVise project, identifies te
 ### 2. Duplicate Implementations
 - ~~**League Management**: Logic for "switching perspective" exists in both the `PerspectiveContext` and partially in the `Chat API` route. This should be unified into a single service layer.~~ **RESOLVED**: All league logic now in `src/services/league.service.ts`.
 - ~~**ESPN Client**: Partial implementations of ESPN scraping logic are scattered between `src/lib/espn` and some older route files.~~ **RESOLVED**: ESPN client is now the single source in `src/lib/espn/client.ts`.
-- ~~**One-off scripts in `/scripts/`**: Debug and ingestion scripts were ad hoc and untracked.~~ **RESOLVED**: Replaced by tracked ops in `src/ops/` with npm run targets (`news:ingest`, `news:ingest:historical`, `league:sync`).
+- ~~**One-off scripts in `/scripts/`**: Debug and ingestion scripts were ad hoc and untracked.~~ **RESOLVED**: Replaced by tracked ops in `src/ops/` with pnpm script targets (`news:ingest`, `news:ingest:historical`, `league:sync`).
 
 
 ## Project Roadmap (TODO List)

@@ -479,7 +479,7 @@ export async function extractIntelligence(prompt: string): Promise<Record<string
 class GeminiEmbeddingProvider implements EmbeddingProvider {
     async embedContent(text: string): Promise<number[]> {
         if (!genAI) throw new Error('Gemini API key not configured');
-        const modelName = process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004';
+        const modelName = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
         const model = genAI.getGenerativeModel({ model: modelName });
 
         return withRetry(async () => {
@@ -543,7 +543,7 @@ export function getEmbeddingProvider(): EmbeddingProvider {
             throw new Error('OpenAI Embedding Provider not yet implemented');
         case 'gemini':
         default:
-            console.log(`[AI Service] Using Gemini Embedding Provider (${process.env.GEMINI_EMBEDDING_MODEL || 'text-embedding-004'})`);
+            console.log(`[AI Service] Using Gemini Embedding Provider (${process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001'})`);
             return new GeminiEmbeddingProvider();
     }
 }
