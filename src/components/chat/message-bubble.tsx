@@ -25,6 +25,19 @@ import type { ChatMessage } from "@/types/ai";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  costEstimate?: {
+    totalUsd: number;
+    promptUsd: number;
+    completionUsd: number;
+    promptTokens: number;
+    completionTokens: number;
+    provider: "gemini" | "ollama" | "unknown";
+    model: string;
+  };
+  timingEstimate?: {
+    totalMs: number;
+    firstTokenMs: number | null;
+  };
   onCopy: (value: string) => void;
   onEditSubmit: (messageId: string, nextValue: string) => void;
   onFeedback: (messageId: string, feedback: "up" | "down") => void;
@@ -33,6 +46,8 @@ interface MessageBubbleProps {
 
 export function MessageBubble({
   message,
+  costEstimate,
+  timingEstimate,
   onCopy,
   onEditSubmit,
   onFeedback,
@@ -46,6 +61,42 @@ export function MessageBubble({
   const canSubmitEdit = editedValue.trim().length > 0 && editedValue.trim() !== message.content;
 
   const markdownContent = useMemo(() => message.content, [message.content]);
+  const formattedCostLine = useMemo(() => {
+    if (!costEstimate) return null;
+
+    const formatUsd = (value: number) => {
+      if (value <= 0) return "$0.00";
+      if (value < 0.001) return "<$0.001";
+      if (value < 0.01) return `$${value.toFixed(3)}`;
+      return `$${value.toFixed(2)}`;
+    };
+
+    const providerLabel =
+      costEstimate.provider === "ollama"
+        ? "Local model"
+        : costEstimate.provider === "gemini"
+          ? "Gemini"
+          : "AI provider";
+
+    return `Est. cost (request + response): ${formatUsd(costEstimate.totalUsd)} (in ${formatUsd(
+      costEstimate.promptUsd
+    )} + out ${formatUsd(costEstimate.completionUsd)}) • ${providerLabel}`;
+  }, [costEstimate]);
+  const formattedTimingLine = useMemo(() => {
+    if (!timingEstimate) return null;
+
+    const totalSeconds = timingEstimate.totalMs / 1000;
+    const totalLabel = totalSeconds < 10 ? `${totalSeconds.toFixed(1)}s` : `${Math.round(totalSeconds)}s`;
+
+    if (timingEstimate.firstTokenMs === null) {
+      return `Response time: ${totalLabel}`;
+    }
+
+    const firstTokenSeconds = timingEstimate.firstTokenMs / 1000;
+    const firstTokenLabel =
+      firstTokenSeconds < 10 ? `${firstTokenSeconds.toFixed(1)}s` : `${Math.round(firstTokenSeconds)}s`;
+    return `Response time: ${totalLabel} (first token ${firstTokenLabel})`;
+  }, [timingEstimate]);
 
   const handleMessageCopy = async () => {
     try {
@@ -193,84 +244,92 @@ export function MessageBubble({
             </div>
           </div>
         ) : (
-          <div
-            className={cn(
-              "prose prose-sm max-w-none wrap-break-word leading-relaxed",
-              "prose-slate dark:prose-invert",
-              "prose-p:text-foreground prose-p:leading-relaxed prose-p:mb-3",
-              "prose-headings:font-bold prose-headings:text-foreground prose-headings:mb-2",
-              "prose-strong:text-foreground prose-strong:font-bold",
-              "prose-li:text-foreground/90 prose-li:my-1",
-              "prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none",
-              "prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-pre:rounded-none",
-              isUser ? "text-foreground" : "text-foreground font-medium"
-            )}
-          >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ className, children, ...props }) {
-                  const match = /language-(\w+)/.exec(className || "");
-                  const language = match?.[1] || "text";
-                  const isInline = !match;
-                  const code = String(children).replace(/\n$/, "");
+          <div>
+            <div
+              className={cn(
+                "prose prose-sm max-w-none wrap-break-word leading-relaxed",
+                "prose-slate dark:prose-invert",
+                "prose-p:text-foreground prose-p:leading-relaxed prose-p:mb-3",
+                "prose-headings:font-bold prose-headings:text-foreground prose-headings:mb-2",
+                "prose-strong:text-foreground prose-strong:font-bold",
+                "prose-li:text-foreground/90 prose-li:my-1",
+                "prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none",
+                "prose-pre:bg-transparent prose-pre:border-0 prose-pre:p-0 prose-pre:rounded-none",
+                isUser ? "text-foreground" : "text-foreground font-medium"
+              )}
+            >
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    const language = match?.[1] || "text";
+                    const isInline = !match;
+                    const code = String(children).replace(/\n$/, "");
 
-                  if (isInline) {
+                    if (isInline) {
+                      return (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    }
+
                     return (
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    );
-                  }
-
-                  return (
-                    <div className="my-4 overflow-hidden rounded-xl border border-border bg-card">
-                      <div className="flex items-center justify-between border-b border-border bg-muted/50 px-3 py-1.5">
-                        <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                          {language}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-[11px] text-success hover:bg-success/10 hover:text-success focus-visible:ring-2 focus-visible:ring-ring"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(code);
-                              onToast("Code copied", "Snippet copied to clipboard.");
-                            } catch {
-                              onToast("Copy failed", "Could not copy this code block.");
-                            }
+                      <div className="my-4 overflow-hidden rounded-xl border border-border bg-card">
+                        <div className="flex items-center justify-between border-b border-border bg-muted/50 px-3 py-1.5">
+                          <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                            {language}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[11px] text-success hover:bg-success/10 hover:text-success focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(code);
+                                onToast("Code copied", "Snippet copied to clipboard.");
+                              } catch {
+                                onToast("Copy failed", "Could not copy this code block.");
+                              }
+                            }}
+                          >
+                            <Copy className="mr-1 h-3 w-3" />
+                            Copy code
+                          </Button>
+                        </div>
+                        <SyntaxHighlighter
+                          language={language}
+                          style={oneDark}
+                          customStyle={{
+                            margin: 0,
+                            background: "transparent",
+                            padding: "0.85rem 0.95rem",
+                            fontSize: "0.82rem",
+                          }}
+                          codeTagProps={{
+                            style: {
+                              fontFamily: "var(--font-geist-mono)",
+                            },
                           }}
                         >
-                          <Copy className="mr-1 h-3 w-3" />
-                          Copy code
-                        </Button>
+                          {code}
+                        </SyntaxHighlighter>
                       </div>
-                      <SyntaxHighlighter
-                        language={language}
-                        style={oneDark}
-                        customStyle={{
-                          margin: 0,
-                          background: "transparent",
-                          padding: "0.85rem 0.95rem",
-                          fontSize: "0.82rem",
-                        }}
-                        codeTagProps={{
-                          style: {
-                            fontFamily: "var(--font-geist-mono)",
-                          },
-                        }}
-                      >
-                        {code}
-                      </SyntaxHighlighter>
-                    </div>
-                  );
-                },
-              }}
-            >
-              {markdownContent}
-            </ReactMarkdown>
+                    );
+                  },
+                }}
+              >
+                {markdownContent}
+              </ReactMarkdown>
+            </div>
+            {!isUser && formattedCostLine && (
+              <p className="mt-3 text-[11px] text-muted-foreground/90">{formattedCostLine}</p>
+            )}
+            {!isUser && formattedTimingLine && (
+              <p className="mt-1 text-[11px] text-muted-foreground/90">{formattedTimingLine}</p>
+            )}
           </div>
         )}
       </div>

@@ -60,6 +60,17 @@ const normalizeForMatch = (value: string) => value.toLowerCase().replace(/[^a-z0
 const NEWS_CONTEXT_TIMEOUT_MS = Number(process.env.NEWS_CONTEXT_TIMEOUT_MS ?? 12000);
 const SNAPSHOT_CONTEXT_TIMEOUT_MS = Number(process.env.SNAPSHOT_CONTEXT_TIMEOUT_MS ?? 12000);
 const PLAYER_STATUS_TIMEOUT_MS = Number(process.env.PLAYER_STATUS_TIMEOUT_MS ?? 8000);
+const GREEK_CHAR_REGEX = /[\u0370-\u03ff\u1f00-\u1fff]/;
+const DO_NOT_DROP_TRIGGER_TERMS = ['drop', 'waive', 'cut', 'release'];
+const RUMOR_TRIGGER_TERMS = ['rumor', 'rumour', 'unverified', 'acl', 'injury', 'tore', 'rupture'];
+const UNCERTAINTY_TRIGGER_TERMS = [
+    '100% certainty',
+    'exact minute',
+    'exact second',
+    'guaranteed',
+    'without doubt',
+    'predict with',
+];
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -99,6 +110,91 @@ const extractRequestedPlayers = (message: string): string[] => {
     return Array.from(new Set([...explicit, ...fallback])).slice(0, 3);
 };
 
+const containsGreek = (text: string): boolean => GREEK_CHAR_REGEX.test(text);
+
+const detectLanguageFromInput = (message: string, requestedLanguage: SupportedLanguage): SupportedLanguage => {
+    if (containsGreek(message)) return 'el';
+    return requestedLanguage;
+};
+
+const needsDoNotDropTemplate = (message: string): boolean => {
+    const normalized = message.toLowerCase();
+    const hasDropIntent = DO_NOT_DROP_TRIGGER_TERMS.some((term) => normalized.includes(term));
+    const hasRumorIntent = RUMOR_TRIGGER_TERMS.some((term) => normalized.includes(term));
+    return hasDropIntent && hasRumorIntent;
+};
+
+const needsUncertaintyTemplate = (message: string): boolean => {
+    const normalized = message.toLowerCase();
+    return UNCERTAINTY_TRIGGER_TERMS.some((term) => normalized.includes(term));
+};
+
+const complianceContract = (language: SupportedLanguage): string => {
+    const uncertaintyBoilerplate =
+        language === 'el'
+            ? 'Βαθμονόμηση αβεβαιότητας: Δεν μπορώ να επιβεβαιώσω με βεβαιότητα μελλοντικά γεγονότα ή ακριβή χρονικά σημεία από τα διαθέσιμα στοιχεία. Χρησιμοποίησε αυτό ως πιθανολογική εκτίμηση και έλεγξε επίσημες ενημερώσεις.'
+            : 'Uncertainty calibration: I cannot verify future events or exact timestamps from current evidence. Treat this as probabilistic guidance and monitor official updates.';
+
+    const doNotDropRule =
+        language === 'el'
+            ? 'Σε μη επιβεβαιωμένες φήμες για τραυματισμό αστέρα, πρέπει να δηλώσεις ρητά: "do not drop".'
+            : 'For unverified star injury rumors, you must explicitly include the exact phrase: "do not drop".';
+
+    const greekLockRule =
+        language === 'el'
+            ? 'Απάντησε αποκλειστικά στα Ελληνικά.'
+            : 'Respond in English.';
+
+    return `\n\nHARD COMPLIANCE CONTRACT:\n- ${doNotDropRule}\n- ${greekLockRule}\n- If evidence is incomplete, append this sentence verbatim:\n"${uncertaintyBoilerplate}"`;
+};
+
+const applyCompliancePostProcessing = (
+    rawOutput: string,
+    message: string,
+    language: SupportedLanguage
+): string => {
+    let output = rawOutput.trim();
+    const mustDoNotDrop = needsDoNotDropTemplate(message);
+    const mustCalibrate = needsUncertaintyTemplate(message) || isInjuryOrAvailabilityQuery(message);
+
+    if (mustDoNotDrop && !/do not drop|don't drop/i.test(output)) {
+        const safetyLine =
+            language === 'el'
+                ? 'Αυτή η πληροφορία είναι μη επιβεβαιωμένη φήμη — do not drop τον παίκτη μέχρι να υπάρξει επίσημη επιβεβαίωση.'
+                : 'This claim is unverified rumor-level information — do not drop the player until an official confirmation exists.';
+        output = `${output}\n\n${safetyLine}`.trim();
+    }
+
+    if (mustDoNotDrop && /insufficient verified status data/i.test(output)) {
+        const explicitDenialLine =
+            language === 'el'
+                ? 'Αυτή είναι μη επιβεβαιωμένη φήμη· δεν υπάρχει επιβεβαιωμένο αποδεικτικό στοιχείο. do not drop.'
+                : 'This is an unverified rumor; there is no confirmed evidence. do not drop.';
+        if (!output.includes(explicitDenialLine)) {
+            output = `${output}\n\n${explicitDenialLine}`.trim();
+        }
+    }
+
+    if (mustCalibrate) {
+        const uncertaintyBoilerplate =
+            language === 'el'
+                ? 'Βαθμονόμηση αβεβαιότητας: Δεν μπορώ να επιβεβαιώσω με βεβαιότητα μελλοντικά γεγονότα ή ακριβή χρονικά σημεία από τα διαθέσιμα στοιχεία. Χρησιμοποίησε αυτό ως πιθανολογική εκτίμηση και έλεγξε επίσημες ενημερώσεις.'
+                : 'Uncertainty calibration: I cannot verify future events or exact timestamps from current evidence. Treat this as probabilistic guidance and monitor official updates.';
+        if (!output.includes(uncertaintyBoilerplate)) {
+            output = `${output}\n\n${uncertaintyBoilerplate}`.trim();
+        }
+    }
+
+    if (language === 'el' && !containsGreek(output)) {
+        const greekFallback = mustDoNotDrop
+            ? 'Η πληροφορία είναι μη επιβεβαιωμένη φήμη. do not drop τον παίκτη μέχρι επίσημη ενημέρωση. Βαθμονόμηση αβεβαιότητας: Δεν μπορώ να επιβεβαιώσω με βεβαιότητα μελλοντικά γεγονότα ή ακριβή χρονικά σημεία από τα διαθέσιμα στοιχεία. Χρησιμοποίησε αυτό ως πιθανολογική εκτίμηση και έλεγξε επίσημες ενημερώσεις.'
+            : 'Δεν υπάρχουν επαρκή επαληθευμένα δεδομένα για ασφαλές συμπέρασμα. Βαθμονόμηση αβεβαιότητας: Δεν μπορώ να επιβεβαιώσω με βεβαιότητα μελλοντικά γεγονότα ή ακριβή χρονικά σημεία από τα διαθέσιμα στοιχεία. Χρησιμοποίησε αυτό ως πιθανολογική εκτίμηση και έλεγξε επίσημες ενημερώσεις.';
+        output = greekFallback;
+    }
+
+    return output;
+};
+
 export interface IntelligenceOptions {
     activeTeamId?: string | null;
     activeLeagueId?: string | null;
@@ -119,6 +215,7 @@ export async function generateStrategicResponse(
     options: IntelligenceOptions = {}
 ) {
     const { activeTeamId, activeLeagueId, language = 'en', prefetchedNewsItems } = options;
+    const effectiveLanguage = detectLanguageFromInput(currentMessage, language);
     const hasPerspective = Boolean(activeTeamId && activeLeagueId);
 
     const newsPromise = prefetchedNewsItems
@@ -304,12 +401,13 @@ export async function generateStrategicResponse(
                     schedule: snapshot.schedule,
                     freeAgents: snapshot.freeAgents,
                 },
-                language,
+                effectiveLanguage,
                 combinedNewsContext ? `Recent News & Intelligence:\n${combinedNewsContext}` : undefined
             );
 
             // Generate system prompt using the Prompt Engine
             systemInstruction = getSystemPrompt('orchestrator', promptContext);
+            systemInstruction = `${systemInstruction}${complianceContract(effectiveLanguage)}`;
 
             // Diagnostic: Log prompt size to help debug token-limit issues with smaller models
             console.log(`[Intelligence Service] System prompt size: ${systemInstruction.length} chars (~${Math.ceil(systemInstruction.length / 4)} tokens)`);
@@ -328,19 +426,41 @@ export async function generateStrategicResponse(
             }
             // Fall back to basic prompt with error context
             const errorMessage = snapshotError instanceof Error ? snapshotError.message : 'Unknown';
-            systemInstruction = buildFallbackPrompt(newsContext, language, `[SYSTEM NOTICE: League context failed - ${errorMessage}]`);
+            systemInstruction = buildFallbackPrompt(newsContext, effectiveLanguage, `[SYSTEM NOTICE: League context failed - ${errorMessage}]`);
         }
     } else {
         console.warn(`[Intelligence Service] No active perspective provided. Falling back to generic intelligence.`);
-        systemInstruction = buildFallbackPrompt(newsContext, language);
+        systemInstruction = buildFallbackPrompt(newsContext, effectiveLanguage);
     }
 
     // 3. Generate streaming response
-    return generateStreamingResponse(
+    const rawStream = await generateStreamingResponse(
         history,
         currentMessage,
         { systemInstruction }
     );
+
+    const enforcePostProcessing =
+        needsDoNotDropTemplate(currentMessage) ||
+        needsUncertaintyTemplate(currentMessage) ||
+        effectiveLanguage === 'el';
+
+    if (!enforcePostProcessing) {
+        return rawStream;
+    }
+
+    return {
+        async *[Symbol.asyncIterator]() {
+            let fullResponse = '';
+            for await (const chunk of rawStream) {
+                if (chunk) fullResponse += chunk;
+            }
+            const processed = applyCompliancePostProcessing(fullResponse, currentMessage, effectiveLanguage);
+            if (processed) {
+                yield processed;
+            }
+        },
+    };
 }
 
 /**
@@ -349,7 +469,7 @@ export async function generateStrategicResponse(
 function buildFallbackPrompt(newsContext: string, language: SupportedLanguage, systemNotice?: string): string {
     const languageInstruction =
         language === 'el'
-            ? "Respond in Greek, while keeping core basketball/fantasy terminology in English when that is clearer."
+            ? "Respond ONLY in Greek. Do not switch to English."
             : "Respond in English.";
 
     return `You are the FanVise Strategist, a data-obsessed NBA fanatic and fantasy basketball expert.
@@ -367,5 +487,10 @@ INSTRUCTIONS:
 4. If conflicting statuses appear, prefer the newest timestamp; if tied, prefer higher trust source.
 5. ${systemNotice ? "Explicitly mention that you are currently providing general NBA advice because the user's specific league data could not be loaded." : "If specific league context is missing, acknowledge it and provide general NBA guidance."}
 6. Maintain your role as a knowledgeable NBA/Fantasy Basketball advisor.
-7. ${languageInstruction}`;
+7. ${languageInstruction}
+8. For unverified star-injury rumors, include the exact phrase: "do not drop".
+9. If certainty is impossible, append exactly: "${language === 'el'
+        ? 'Βαθμονόμηση αβεβαιότητας: Δεν μπορώ να επιβεβαιώσω με βεβαιότητα μελλοντικά γεγονότα ή ακριβή χρονικά σημεία από τα διαθέσιμα στοιχεία. Χρησιμοποίησε αυτό ως πιθανολογική εκτίμηση και έλεγξε επίσημες ενημερώσεις.'
+        : 'Uncertainty calibration: I cannot verify future events or exact timestamps from current evidence. Treat this as probabilistic guidance and monitor official updates.'
+    }"`;
 }

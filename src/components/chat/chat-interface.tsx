@@ -30,13 +30,84 @@ interface ToastState {
   description?: string;
 }
 
+interface ResponseCostEstimate {
+  totalUsd: number;
+  promptUsd: number;
+  completionUsd: number;
+  promptTokens: number;
+  completionTokens: number;
+  provider: "gemini" | "ollama" | "unknown";
+  model: string;
+}
+
+interface ResponseTimingEstimate {
+  totalMs: number;
+  firstTokenMs: number | null;
+}
+
 const STREAM_HEARTBEAT_TOKEN = "[[FV_STREAM_READY]]";
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+const GEMINI_FLASH_INPUT_USD_PER_MILLION = 0.1;
+const GEMINI_FLASH_OUTPUT_USD_PER_MILLION = 0.4;
+
+const estimateTokens = (text: string): number => {
+  if (!text.trim()) return 0;
+  return Math.ceil(text.length / CHARS_PER_TOKEN_ESTIMATE);
+};
+
+const getProviderPricing = (provider: ResponseCostEstimate["provider"]) => {
+  if (provider === "ollama") {
+    return { inputUsdPerMillion: 0, outputUsdPerMillion: 0 };
+  }
+
+  if (provider === "gemini") {
+    return {
+      inputUsdPerMillion: GEMINI_FLASH_INPUT_USD_PER_MILLION,
+      outputUsdPerMillion: GEMINI_FLASH_OUTPUT_USD_PER_MILLION,
+    };
+  }
+
+  return {
+    inputUsdPerMillion: GEMINI_FLASH_INPUT_USD_PER_MILLION,
+    outputUsdPerMillion: GEMINI_FLASH_OUTPUT_USD_PER_MILLION,
+  };
+};
+
+const estimateResponseCost = ({
+  requestPayload,
+  responseText,
+  provider,
+  model,
+}: {
+  requestPayload: unknown;
+  responseText: string;
+  provider: ResponseCostEstimate["provider"];
+  model: string;
+}): ResponseCostEstimate => {
+  const promptTokens = estimateTokens(JSON.stringify(requestPayload));
+  const completionTokens = estimateTokens(responseText);
+  const pricing = getProviderPricing(provider);
+  const promptUsd = (promptTokens / 1_000_000) * pricing.inputUsdPerMillion;
+  const completionUsd = (completionTokens / 1_000_000) * pricing.outputUsdPerMillion;
+
+  return {
+    totalUsd: promptUsd + completionUsd,
+    promptUsd,
+    completionUsd,
+    promptTokens,
+    completionTokens,
+    provider,
+    model,
+  };
+};
 
 export function ChatInterface() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [toasts, setToasts] = useState<ToastState[]>([]);
+  const [messageCostById, setMessageCostById] = useState<Record<string, ResponseCostEstimate>>({});
+  const [messageTimingById, setMessageTimingById] = useState<Record<string, ResponseTimingEstimate>>({});
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -128,20 +199,23 @@ export function ChatInterface() {
   const streamAssistantReply = async (conversationId: string, requestMessages: ChatMessage[]) => {
     const assistantDraft = createMessage("assistant", "");
     persistMessages(conversationId, [...requestMessages, assistantDraft]);
+    const requestStartTime = performance.now();
+
+    const requestPayload = {
+      messages: requestMessages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      activeTeamId: (activeTeamId === "null" || !activeTeamId) ? undefined : activeTeamId,
+      activeLeagueId: (activeLeagueId === "null" || !activeLeagueId) ? undefined : activeLeagueId,
+      teamName: activeTeam?.manager || "Unknown Team",
+      language: responseLanguage,
+    };
 
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: requestMessages.map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-        activeTeamId: (activeTeamId === "null" || !activeTeamId) ? undefined : activeTeamId,
-        activeLeagueId: (activeLeagueId === "null" || !activeLeagueId) ? undefined : activeLeagueId,
-        teamName: activeTeam?.manager || "Unknown Team",
-        language: responseLanguage,
-      }),
+      body: JSON.stringify(requestPayload),
     });
 
     if (!response.ok) {
@@ -157,20 +231,47 @@ export function ChatInterface() {
 
     const reader = response.body?.getReader();
     if (!reader) return;
+    const providerHeader = response.headers.get("x-fanvise-ai-provider");
+    const modelHeader = response.headers.get("x-fanvise-ai-model");
+    const provider: ResponseCostEstimate["provider"] =
+      providerHeader === "ollama" ? "ollama" : providerHeader === "gemini" ? "gemini" : "unknown";
+    const model = modelHeader || "unknown";
 
     let assistantMessage = "";
+    let firstTokenMs: number | null = null;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const text = new TextDecoder().decode(value);
       const sanitizedText = text.replaceAll(STREAM_HEARTBEAT_TOKEN, "");
       if (!sanitizedText) continue;
+      if (firstTokenMs === null) {
+        firstTokenMs = performance.now() - requestStartTime;
+      }
       assistantMessage += sanitizedText;
       persistMessages(conversationId, [
         ...requestMessages,
         { ...assistantDraft, content: assistantMessage },
       ]);
     }
+    const totalMs = performance.now() - requestStartTime;
+
+    setMessageCostById((prev) => ({
+      ...prev,
+      [assistantDraft.id]: estimateResponseCost({
+        requestPayload,
+        responseText: assistantMessage,
+        provider,
+        model,
+      }),
+    }));
+    setMessageTimingById((prev) => ({
+      ...prev,
+      [assistantDraft.id]: {
+        totalMs,
+        firstTokenMs,
+      },
+    }));
   };
 
   const handleSubmit = async (
@@ -401,6 +502,8 @@ export function ChatInterface() {
               <MessageBubble
                 key={message.id}
                 message={message}
+                costEstimate={messageCostById[message.id]}
+                timingEstimate={messageTimingById[message.id]}
                 onFeedback={handleFeedback}
                 onCopy={handleCopy}
                 onToast={showToast}
