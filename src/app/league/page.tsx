@@ -12,6 +12,17 @@ import { cn } from "@/lib/utils";
 import { Team } from "@/lib/perspective-context";
 
 type DraftValue = string | number | boolean | null | undefined;
+type ScoringRule = { statId: number; points: number };
+type DraftPick = {
+    id?: number;
+    overallPickNumber?: number;
+    roundId?: number;
+    roundPickNumber?: number;
+    teamId?: number;
+    playerId?: number;
+    bidAmount?: number;
+    keeper?: boolean;
+};
 
 const toDraftState = (value: DraftValue) => {
     if (value === true) return "Yes";
@@ -39,6 +50,82 @@ const toDraftDate = (value: DraftValue) => {
     });
 };
 
+const toTitleCase = (key: string) => {
+    const normalized = key
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/[_-]+/g, " ")
+        .trim();
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+const normalizeDraftLabel = (key: string) => {
+    switch (key) {
+        case "drafted":
+            return "Draft Completed";
+        case "inProgress":
+            return "In Progress";
+        case "type":
+        case "draftType":
+            return "Draft Type";
+        case "auctionBudget":
+            return "Auction Budget";
+        case "pickTimeLimit":
+        case "pickTimeSeconds":
+            return "Pick Time";
+        case "rounds":
+        case "totalRounds":
+            return "Rounds";
+        default:
+            return toTitleCase(key);
+    }
+};
+
+const flattenDraftDetail = (
+    obj: Record<string, unknown>,
+    maxDepth = 2,
+    prefix = ""
+): Array<{ key: string; value: DraftValue }> => {
+    if (maxDepth < 0) return [];
+    const entries: Array<{ key: string; value: DraftValue }> = [];
+
+    for (const [key, rawValue] of Object.entries(obj)) {
+        const fullKey = prefix ? `${prefix}.${key}` : key;
+        if (
+            rawValue === null ||
+            typeof rawValue === "string" ||
+            typeof rawValue === "number" ||
+            typeof rawValue === "boolean"
+        ) {
+            entries.push({ key: fullKey, value: rawValue });
+            continue;
+        }
+
+        if (Array.isArray(rawValue)) {
+            if (rawValue.length === 0) continue;
+            const primitiveArray = rawValue.every(
+                (item) =>
+                    item === null ||
+                    typeof item === "string" ||
+                    typeof item === "number" ||
+                    typeof item === "boolean"
+            );
+
+            if (primitiveArray) {
+                entries.push({ key: fullKey, value: String(rawValue.join(", ")) });
+            } else {
+                entries.push({ key: fullKey, value: `${rawValue.length} items` });
+            }
+            continue;
+        }
+
+        if (typeof rawValue === "object") {
+            entries.push(...flattenDraftDetail(rawValue as Record<string, unknown>, maxDepth - 1, fullKey));
+        }
+    }
+
+    return entries;
+};
+
 const buildDraftSummary = (draftDetail?: Record<string, unknown>) => {
     if (!draftDetail || typeof draftDetail !== "object") return [];
 
@@ -49,14 +136,53 @@ const buildDraftSummary = (draftDetail?: Record<string, unknown>) => {
         toDraftDate(detail.draftTime) ||
         toDraftDate(detail.scheduledDate);
 
-    return [
+    const curated = [
         { label: "Type", value: toDraftState(detail.type ?? detail.draftType ?? detail.format) },
-        { label: "Status", value: toDraftState(detail.status ?? detail.state ?? detail.inProgress) },
+        { label: "Draft Completed", value: toDraftState(detail.drafted) },
+        { label: "In Progress", value: toDraftState(detail.inProgress) },
+        { label: "Status", value: toDraftState(detail.status ?? detail.state) },
         { label: "Rounds", value: toDraftState(detail.rounds ?? detail.totalRounds) },
         { label: "Pick Time", value: toDraftState(detail.pickTimeLimit ?? detail.pickTimeSeconds) },
         { label: "Auction Budget", value: toDraftState(detail.auctionBudget) },
         { label: "Draft Date", value: dateValue ?? "N/A" },
     ].filter((item) => item.value !== "N/A");
+
+    if (curated.length > 0) return curated;
+
+    const fallbackEntries = flattenDraftDetail(draftDetail)
+        .filter((entry) => toDraftState(entry.value) !== "N/A")
+        .slice(0, 12);
+
+    return fallbackEntries.map((entry) => ({
+        label: normalizeDraftLabel(entry.key),
+        value: toDraftState(entry.value),
+    }));
+};
+
+const buildDraftBoard = (draftDetail?: Record<string, unknown>) => {
+    if (!draftDetail || typeof draftDetail !== "object") return [] as DraftPick[];
+    const picks = (draftDetail as { picks?: unknown }).picks;
+    if (!Array.isArray(picks)) return [] as DraftPick[];
+
+    return picks
+        .filter((pick): pick is DraftPick => typeof pick === "object" && pick !== null)
+        .sort((a, b) => (a.overallPickNumber ?? 0) - (b.overallPickNumber ?? 0));
+};
+
+const parseScoringRules = (scoringSettings: Record<string, unknown>): ScoringRule[] => {
+    const scoringItems = (scoringSettings as { scoringItems?: { statId?: number; points?: number }[] }).scoringItems;
+    if (Array.isArray(scoringItems) && scoringItems.length > 0) {
+        return scoringItems
+            .filter((item): item is { statId: number; points: number } =>
+                typeof item?.statId === "number" && typeof item?.points === "number"
+            )
+            .filter((rule) => rule.points !== 0);
+    }
+
+    // Backward compatibility for older sync payloads that stored a flat statId -> points map.
+    return Object.entries(scoringSettings)
+        .filter(([key, value]) => /^\d+$/.test(key) && typeof value === "number" && value !== 0)
+        .map(([key, value]) => ({ statId: Number(key), points: value as number }));
 };
 
 export default function LeaguePage() {
@@ -105,11 +231,12 @@ export default function LeaguePage() {
     const { name, season_id, scoring_settings, teams, draft_detail } = league;
     
     // Calculate total points stats count
-    const scoringItems = (scoring_settings as unknown as { scoringItems: { statId: number; points: number }[] })?.scoringItems || [];
-    
-    // Filter out items with 0 points
-    const activeScoringRules = scoringItems.filter((rule) => rule.points !== 0);
+    const activeScoringRules = parseScoringRules(scoring_settings as Record<string, unknown>);
     const draftSummary = buildDraftSummary(draft_detail);
+    const draftBoard = buildDraftBoard(draft_detail);
+    const teamNameById = new Map(
+        ((teams as Team[]) || []).map((team) => [Number(team.id), team.name || team.manager])
+    );
 
     return (
         <MainLayout>
@@ -152,6 +279,61 @@ export default function LeaguePage() {
                             ) : (
                                 <p className="text-sm text-muted-foreground">
                                     Draft data has not been synced yet for this league.
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </section>
+
+                {/* Full Draft Board */}
+                <section className="space-y-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500">
+                            <CalendarClock className="w-5 h-5" />
+                        </div>
+                        <h2 className="text-2xl font-bold tracking-tight">Full Draft Board</h2>
+                    </div>
+                    <Card className="border-border/50 bg-card/30 shadow-inner">
+                        <CardContent className="pt-6">
+                            {draftBoard.length > 0 ? (
+                                <div className="space-y-4">
+                                    <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                                        {draftBoard.length} picks synced from ESPN draft detail
+                                    </div>
+                                    <div className="max-h-[460px] overflow-auto rounded-xl border border-border/50">
+                                        <table className="w-full text-sm">
+                                            <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur">
+                                                <tr className="border-b border-border/60">
+                                                    <th className="px-3 py-2 text-left font-semibold">Overall</th>
+                                                    <th className="px-3 py-2 text-left font-semibold">Round</th>
+                                                    <th className="px-3 py-2 text-left font-semibold">Pick</th>
+                                                    <th className="px-3 py-2 text-left font-semibold">Team</th>
+                                                    <th className="px-3 py-2 text-left font-semibold">Player ID</th>
+                                                    <th className="px-3 py-2 text-left font-semibold">Keeper</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {draftBoard.map((pick) => (
+                                                    <tr key={pick.id ?? `${pick.overallPickNumber}-${pick.playerId}`} className="border-b border-border/40">
+                                                        <td className="px-3 py-2 font-medium">{pick.overallPickNumber ?? "-"}</td>
+                                                        <td className="px-3 py-2">{pick.roundId ?? "-"}</td>
+                                                        <td className="px-3 py-2">{pick.roundPickNumber ?? "-"}</td>
+                                                        <td className="px-3 py-2">
+                                                            {pick.teamId !== undefined
+                                                                ? (teamNameById.get(Number(pick.teamId)) ?? `Team ${pick.teamId}`)
+                                                                : "-"}
+                                                        </td>
+                                                        <td className="px-3 py-2 font-mono">{pick.playerId ?? "-"}</td>
+                                                        <td className="px-3 py-2">{pick.keeper ? "Yes" : "No"}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    Full draft picks are not available in the synced league payload.
                                 </p>
                             )}
                         </CardContent>

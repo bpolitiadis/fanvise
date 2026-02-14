@@ -32,6 +32,7 @@ Deep dives into the system architecture and implementation details.
 *   **[AI Quality Audit](./technical/AI_Quality_Audit.md)**: RAG reliability audit, golden dataset design, and deterministic prompt hardening plan.
 *   **[Architecture Review (2026-02-13)](./technical/Architecture_Review_2026-02-13.md)**: Backend architecture review, blocking/correctness findings, and caching strategy.
 *   **[Security Audit (2026-02-13)](./technical/Security_Audit_Report_2026-02-13.md)**: Threat model, tenant isolation, RLS, and chat endpoint hardening.
+*   **[Database Architecture and Scalability Audit (2026-02-14)](./audits/Database_Architecture_Scalability_Audit_2026-02-14.md)**: Supabase-focused scalability assessment for ESPN sync, H2H data model, and RAG indexing.
 
 ## AI QA Evaluation
 

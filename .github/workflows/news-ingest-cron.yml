@@ -1,0 +1,31 @@
+name: Production News Ingest
+
+on:
+  schedule:
+    - cron: "0 6,18 * * *"
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger production cron endpoint
+        env:
+          FANVISE_PROD_URL: ${{ secrets.FANVISE_PROD_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          TARGET_URL="${FANVISE_PROD_URL:-https://fanvise.vercel.app}"
+          ENDPOINT="${TARGET_URL%/}/api/cron/news"
+
+          if [ -n "${CRON_SECRET:-}" ]; then
+            RESPONSE=$(curl -sS --fail --max-time 300 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${ENDPOINT}")
+          else
+            RESPONSE=$(curl -sS --fail --max-time 300 "${ENDPOINT}")
+          fi
+
+          echo "Cron response: ${RESPONSE}"

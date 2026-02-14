@@ -1,19 +1,37 @@
 import { NextResponse } from "next/server";
 import { fetchAndIngestNews } from "@/services/news.service";
 
-export async function GET() {
-    try {
-        // Optional: Add secret key check for security
-        // const authHeader = req.headers.get('authorization');
-        // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        //     return new NextResponse('Unauthorized', { status: 401 });
-        // }
+const toSafeCronLimit = (value: string | undefined) => {
+    const parsed = Number(value ?? "12");
+    if (!Number.isFinite(parsed)) return 12;
+    return Math.min(25, Math.max(1, Math.floor(parsed)));
+};
 
-        const count = await fetchAndIngestNews();
-        return NextResponse.json({ success: true, count });
+export async function GET(req: Request) {
+    try {
+        // Restrict worker-like cron ingestion to production deployments only.
+        if (process.env.VERCEL_ENV !== "production") {
+            return NextResponse.json({
+                success: true,
+                skipped: true,
+                reason: "Cron ingestion runs only in production.",
+            });
+        }
+
+        const cronSecret = process.env.CRON_SECRET;
+        if (cronSecret) {
+            const authHeader = req.headers.get("authorization");
+            if (authHeader !== `Bearer ${cronSecret}`) {
+                return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+            }
+        }
+
+        const limit = toSafeCronLimit(process.env.NEWS_CRON_LIMIT);
+        const count = await fetchAndIngestNews([], limit);
+        return NextResponse.json({ success: true, count, limit });
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
-        console.error("News ingestion failed:", error);
+        console.error("[Cron News] ingestion failed:", error);
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }

@@ -7,7 +7,7 @@ export async function POST() {
     try {
         const leagueId = process.env.NEXT_PUBLIC_ESPN_LEAGUE_ID!;
         const year = process.env.NEXT_PUBLIC_ESPN_SEASON_ID!;
-        const sport = process.env.NEXT_PUBLIC_ESPN_SPORT || "ffl";
+        const sport = process.env.NEXT_PUBLIC_ESPN_SPORT || "fba";
         const swid = process.env.ESPN_SWID;
         const s2 = process.env.ESPN_S2;
 

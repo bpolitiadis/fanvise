@@ -34,6 +34,11 @@ export default function Home() {
     if (!activeLeagueId) return;
     setIsSyncing(true);
     try {
+        const leagueSyncResponse = await fetch('/api/sync', { method: 'POST' });
+        if (!leagueSyncResponse.ok) {
+          throw new Error("League sync failed");
+        }
+
         const year = new Date().getFullYear().toString();
         const sport = process.env.NEXT_PUBLIC_ESPN_SPORT || "fba";
         

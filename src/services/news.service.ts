@@ -18,6 +18,22 @@ import { createClient } from '@supabase/supabase-js'; // Use direct client for s
 import { sleep } from '@/utils/retry';
 
 const parser = new Parser();
+const IS_VERCEL_PROD = process.env.VERCEL_ENV === 'production';
+const AI_STEP_TIMEOUT_MS = IS_VERCEL_PROD ? 15000 : 30000;
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise<T>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+            })
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+};
 
 interface SearchNewsItem {
     id?: string;
@@ -272,8 +288,30 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
         }
 
         const contentText = cleanContent(item.contentSnippet || item.title || "");
-        const intelligencePromise = extractIntelligence(contentText);
-        const embeddingPromise = getEmbedding(`${item.title} ${contentText}`)
+        const intelligencePromise = withTimeout(
+            extractIntelligence(contentText),
+            AI_STEP_TIMEOUT_MS,
+            "intelligence extraction"
+        ).catch((intelligenceError: unknown) => {
+            const message = intelligenceError instanceof Error ? intelligenceError.message : String(intelligenceError);
+            console.warn(`[News Service] Intelligence extraction timed out/fail, using fallback: ${message}`);
+            return {
+                player_name: null,
+                sentiment: 'NEUTRAL' as const,
+                category: 'Other' as const,
+                impact_backup: null,
+                is_injury_report: false,
+                injury_status: null,
+                expected_return_date: null,
+                impacted_player_ids: [],
+                trust_level: 1,
+            };
+        });
+        const embeddingPromise = withTimeout(
+            getEmbedding(`${item.title} ${contentText}`),
+            AI_STEP_TIMEOUT_MS,
+            "embedding generation"
+        )
             .catch((embeddingError: unknown) => {
                 const message = embeddingError instanceof Error ? embeddingError.message : String(embeddingError);
                 console.warn(`[News Service] Embedding generation failed, continuing without vector: ${message}`);
@@ -326,8 +364,18 @@ export async function fetchAndIngestNews(watchlist: string[] = [], limit: number
     let importedCount = 0;
     const MAX_ITEMS_PER_SYNC = limit; // Increased throughput for user request
     const activeKeywords = [...NBA_KEYWORDS, ...watchlist];
+    const defaultBatchSize = IS_VERCEL_PROD ? 1 : 2;
+    const configuredBatchSize = Number(process.env.NEWS_INGEST_BATCH_SIZE || defaultBatchSize);
+    const batchSize = Number.isFinite(configuredBatchSize)
+        ? Math.max(1, Math.min(Math.floor(configuredBatchSize), 3))
+        : defaultBatchSize;
+    const defaultDelayMs = IS_VERCEL_PROD ? 2500 : 1000;
+    const configuredDelayMs = Number(process.env.NEWS_INGEST_DELAY_MS || defaultDelayMs);
+    const delayMs = Number.isFinite(configuredDelayMs)
+        ? Math.max(500, Math.min(Math.floor(configuredDelayMs), 10000))
+        : defaultDelayMs;
 
-    console.log(`Starting High-Throughput NBA Ingestion... (Watchlist: ${watchlist.length} players)`);
+    console.log(`Starting NBA ingestion... (Watchlist: ${watchlist.length}, batchSize=${batchSize}, delayMs=${delayMs})`);
 
     for (const feed of FEEDS) {
         if (importedCount >= MAX_ITEMS_PER_SYNC) break;
@@ -339,19 +387,18 @@ export async function fetchAndIngestNews(watchlist: string[] = [], limit: number
             // Look at slightly more items from each feed
             const itemsToProcess = parsed.items.slice(0, 40);
 
-            // Process in batches of 2 for higher stability with rate limits
-            for (let i = 0; i < itemsToProcess.length; i += 2) {
+            // Process with adaptive batch size to reduce provider 429s in production.
+            for (let i = 0; i < itemsToProcess.length; i += batchSize) {
                 if (importedCount >= MAX_ITEMS_PER_SYNC) break;
 
-                const batch = itemsToProcess.slice(i, i + 2);
+                const batch = itemsToProcess.slice(i, i + batchSize);
                 const results = await Promise.all(
                     batch.map(item => processItem(item, feed.source, watchlist, activeKeywords, dryRun))
                 );
 
                 importedCount += results.filter(Boolean).length;
 
-                // Increased sleep between batches for better Free Tier compliance
-                if (batch.length > 0 && !dryRun) await sleep(1000);
+                if (batch.length > 0 && !dryRun) await sleep(delayMs);
             }
 
         } catch (err) {

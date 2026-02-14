@@ -46,8 +46,10 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
     };
     const settings = data.settings || {};
     const name = settings.name || `League ${data.id}`;
-    const scoringSettings = settings.scoringSettings || {};
-    const rosterSettings = settings.rosterSettings || {};
+    const scoringSettings = (settings.scoringSettings || data.settings?.scoringSettings || {}) as Record<string, unknown>;
+    const rosterSettings = (settings.rosterSettings || data.settings?.rosterSettings || {}) as Record<string, unknown>;
+    const draftDetailCandidate = toJsonObject(data.draftDetail);
+    const fallbackDraftFromSettings = toJsonObject((settings as Record<string, unknown>).draftSettings);
 
     // Extract teams
     // data.teams usually contains the team info
@@ -68,7 +70,9 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
             wins: t.record?.overall?.wins || 0,
             losses: t.record?.overall?.losses || 0,
             ties: t.record?.overall?.ties || 0,
-            manager: member ? `${member.firstName} ${member.lastName}` : "Unknown",
+            manager: member
+                ? `${member.firstName || ""} ${member.lastName || ""}`.trim() || member.displayName || "Unknown"
+                : "Unknown",
             is_user_owned: isUserOwned
         };
     });
@@ -78,7 +82,9 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
         scoringSettings,
         rosterSettings,
         teams,
-        draftDetail: toJsonObject(data.draftDetail),
+        draftDetail: Object.keys(draftDetailCandidate).length > 0
+            ? draftDetailCandidate
+            : fallbackDraftFromSettings,
         positionalRatings: toJsonObject(data.positionalRatings),
         liveScoring: toJsonObject(data.liveScoring)
     };

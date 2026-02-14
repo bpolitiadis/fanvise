@@ -54,6 +54,13 @@ Operational workflows are handled via tracked scripts in `src/ops/`:
 *   `npm run news:ingest:historical` - Run historical backfill (`NEWS_BACKFILL_PAGES` configurable).
 *   `npm run league:sync` - Sync league metadata and transactions from ESPN to Supabase.
 
+Production runs automated lightweight news ingestion twice daily via GitHub Actions hitting `/api/cron/news`:
+
+*   Schedule: `06:00` and `18:00` UTC (`.github/workflows/news-ingest-cron.yml`).
+*   `NEWS_CRON_LIMIT` controls max items per run (default `12`, capped at `25`).
+*   Optional hardening: set `CRON_SECRET` in Vercel and in GitHub Secrets.
+*   Optional override: set `FANVISE_PROD_URL` in GitHub Secrets (defaults to `https://fanvise.vercel.app`).
+
 Integration verification lives in `tests/integration/` and is environment-gated:
 
 *   `npm run test:integration` - Runs integration tests that require `RUN_INTEGRATION_TESTS=true`.

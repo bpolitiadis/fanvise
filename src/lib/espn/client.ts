@@ -26,34 +26,94 @@ export class EspnClient {
         return headers;
     }
 
-    async getLeagueSettings() {
-        // Add multiple views by appending manually since URLSearchParams encodes commas sometimes in a way ESPN doesn't like,
-        // or just use the standard parameter repetition if supported.
-        // ESPN V3 compliant way: ?view=mSettings&view=mTeam&view=mRoaster
-        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=mSettings&view=mTeam&view=mRoster&view=mBoxScore&view=mDraftDetail&view=mPositionalRatings&view=mPendingTransactions&view=mLiveScoring`;
+    private buildLeagueUrl(views: string[], params?: Record<string, string | number>) {
+        const base = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}`;
+        const query = new URLSearchParams();
 
-        console.log(`Fetching League Settings: ${url}`);
+        for (const view of views) {
+            query.append("view", view);
+        }
 
+        if (params) {
+            for (const [key, value] of Object.entries(params)) {
+                query.append(key, String(value));
+            }
+        }
+
+        return `${base}?${query.toString()}`;
+    }
+
+    private async fetchLeagueViews(
+        views: string[],
+        options?: {
+            revalidate?: number;
+            params?: Record<string, string | number>;
+        }
+    ) {
+        const url = this.buildLeagueUrl(views, options?.params);
+        console.log(`Fetching ESPN views [${views.join(", ")}]: ${url}`);
+
+        const response = await fetch(url, {
+            headers: this.getHeaders(),
+            next: { revalidate: options?.revalidate ?? 300 },
+        });
+
+        if (!response.ok) {
+            const text = await response.text().catch(() => "");
+            console.error(`ESPN API Error (${response.status}) for [${views.join(", ")}]:`, text.substring(0, 500));
+            throw new Error(`ESPN API Error: ${response.status} ${response.statusText}`);
+        }
+
+        const text = await response.text();
         try {
-            const response = await fetch(url, {
-                headers: this.getHeaders(),
-                next: { revalidate: 3600 } // Cache for 1 hour
+            return JSON.parse(text);
+        } catch {
+            console.error(`Failed to parse ESPN response for [${views.join(", ")}]:`, text.substring(0, 500));
+            throw new Error(`Invalid JSON from ESPN: ${text.substring(0, 200)}...`);
+        }
+    }
+
+    async getLeagueSettings() {
+        // ESPN can return incomplete payloads when too many views are combined.
+        // Fetch core league data first, then merge optional intelligence views.
+        try {
+            const coreData = await this.fetchLeagueViews(["mSettings", "mTeam", "mRoster"], {
+                revalidate: 3600,
             });
 
-            if (!response.ok) {
-                const text = await response.text();
-                console.error(`ESPN API Error (${response.status}):`, text.substring(0, 500)); // Log first 500 chars
-                throw new Error(`ESPN API Error: ${response.status} ${response.statusText}`);
+            const [draftResult, positionalResult, liveScoringResult] = await Promise.allSettled([
+                this.fetchLeagueViews(["mDraftDetail"], { revalidate: 3600 }),
+                this.fetchLeagueViews(["mPositionalRatings"], { revalidate: 3600 }),
+                this.fetchLeagueViews(["mLiveScoring"], { revalidate: 600 }),
+            ]);
+
+            const mergedData = {
+                ...coreData,
+                draftDetail:
+                    draftResult.status === "fulfilled"
+                        ? (draftResult.value?.draftDetail ?? coreData?.draftDetail)
+                        : coreData?.draftDetail,
+                positionalRatings:
+                    positionalResult.status === "fulfilled"
+                        ? (positionalResult.value?.positionalRatings ?? coreData?.positionalRatings)
+                        : coreData?.positionalRatings,
+                liveScoring:
+                    liveScoringResult.status === "fulfilled"
+                        ? (liveScoringResult.value?.liveScoring ?? coreData?.liveScoring)
+                        : coreData?.liveScoring,
+            };
+
+            if (draftResult.status === "rejected") {
+                console.warn("mDraftDetail fetch failed; continuing with core payload.");
+            }
+            if (positionalResult.status === "rejected") {
+                console.warn("mPositionalRatings fetch failed; continuing with core payload.");
+            }
+            if (liveScoringResult.status === "rejected") {
+                console.warn("mLiveScoring fetch failed; continuing with core payload.");
             }
 
-            const text = await response.text();
-            try {
-                // Return as typed response - validation handled by runtime checks in mapper or usage
-                return JSON.parse(text);
-            } catch {
-                console.error("Failed to parse ESPN response:", text.substring(0, 500));
-                throw new Error(`Invalid JSON from ESPN: ${text.substring(0, 200)}...`);
-            }
+            return mergedData;
         } catch (error) {
             console.error("Failed to fetch league settings:", error);
             throw error;
