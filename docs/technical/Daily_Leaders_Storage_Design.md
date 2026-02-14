@@ -101,6 +101,13 @@ So: **DB = source of truth; chatbot = read from DB (and optionally RAG for fuzzy
 4. **Sync job**  
    - Cron (or Vercel cron): daily (e.g. after games are final) resolve “yesterday” → `scoring_period_id`, call the ESPN leaders endpoint, then upsert into `daily_leaders` (and optionally refresh player pool or summaries).
 
+### Current Production Orchestration Note
+
+- `daily_leaders` sync is **not** executed by the news cron route anymore.
+- `GET /api/cron/news` is now **news-only** (RSS ingest + AI extraction/embeddings).
+- Daily leaders refresh is part of the **league sync flow** (manual dashboard `Sync League`, or dedicated leaders route/script).
+- This separation avoids coupling `daily_leaders` freshness to expensive news/Gemini runs.
+
 ---
 
 ## 5. Can You Have a “Daily Leaders Board for All Days” in the App?

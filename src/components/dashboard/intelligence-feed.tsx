@@ -12,6 +12,17 @@ interface IntelligenceFeedProps {
   className?: string;
 }
 
+const formatPublishedAt = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 export function IntelligenceFeed({ news, className }: IntelligenceFeedProps) {
   return (
     <Card className={cn("border-border/50 shadow-lg bg-card/50 backdrop-blur-sm border-l-4 border-l-yellow-600 h-full flex flex-col", className)}>
@@ -41,7 +52,7 @@ export function IntelligenceFeed({ news, className }: IntelligenceFeedProps) {
                   <div className="flex items-center gap-2 pt-1 uppercase tracking-tighter text-[9px] font-bold text-muted-foreground/60">
                     <span>{item.source}</span>
                     <span>•</span>
-                    <span>{new Date(item.published_at).toLocaleDateString()}</span>
+                    <span>{formatPublishedAt(item.published_at)}</span>
                   </div>
                 </a>
               </div>

@@ -52,18 +52,24 @@ The repository includes a standalone black-box RAG evaluation suite in `fanvise_
 
 Operational workflows are handled via tracked scripts in `src/ops/`:
 
-*   `pnpm news:ingest` - Run standard news ingestion.
+*   `pnpm news:ingest` - Run standard **news-only** ingestion (Gemini extraction + embeddings).
 *   `pnpm news:ingest:historical` - Run historical backfill (`NEWS_BACKFILL_PAGES` configurable).
 *   `pnpm league:sync` - Sync league metadata and transactions from ESPN to Supabase.
 *   `pnpm leaders:sync` - Sync daily leaders (per scoring period) into Supabase (`DAILY_LEADERS_DATE=YYYY-MM-DD` optional override).
 
-Production runs automated lightweight news ingestion twice daily via GitHub Actions hitting `/api/cron/news`:
+Production runs automated lightweight **news-only** ingestion twice daily via GitHub Actions hitting `/api/cron/news`:
 
-*   Schedule: `06:00` and `18:00` UTC (`.github/workflows/news-ingest-cron.yml`).
+*   Schedule: `11:00` and `22:00` UTC (`.github/workflows/news-ingest-cron.yml`).
 *   `NEWS_CRON_LIMIT` controls max items per run (default `12`, capped at `25`).
 *   Optional hardening: set `CRON_SECRET` in Vercel and in GitHub Secrets.
 *   Optional override: set `FANVISE_PROD_URL` in GitHub Secrets (defaults to `https://fanvise.vercel.app`).
-*   The same cron now also refreshes `player_status_snapshots` and `daily_leaders` for yesterday.
+*   Runtime guardrails in `src/app/api/cron/news/route.ts` skip execution outside the two allowed UTC windows.
+
+Manual dashboard controls are now split:
+
+*   **Sync League**: `/api/sync`, transactions, player statuses, and daily leaders.
+*   **Sync News**: `/api/news/sync` only (RSS fetch + Gemini extraction + embeddings).
+*   `/api/news/sync` requires explicit manual intent header (`x-fanvise-sync-intent: manual-news-sync`) to reduce accidental triggers.
 
 Integration verification lives in `tests/integration/` and is environment-gated:
 

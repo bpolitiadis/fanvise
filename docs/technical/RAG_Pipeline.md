@@ -25,6 +25,12 @@ News is ingested through two primary channels:
 - **RSS Feeds**: Real-time polling of feeds from Rotowire, ESPN, Yahoo Sports, and CBS Sports.
 - **Historical Backfill**: Direct integration with the ESPN News API to fetch historical context up to 14 days back.
 
+### Execution Guardrails
+
+- **Automatic ingestion** is restricted to exactly two daily cron windows (`11:00` and `22:00` UTC) via `/api/cron/news`.
+- **Manual ingestion** happens from the Dashboard `Sync News` action only and requires explicit manual intent metadata.
+- **League sync operations** (league metadata, transactions, player statuses, daily leaders) are intentionally separated from news ingestion to avoid unintended Gemini/pgvector costs.
+
 ## 2. Intelligence Extraction
 
 Every ingested article is processed by the AI Service to extract structured metadata. This ensures the AI can reason about the *impact* of news, not just the text.

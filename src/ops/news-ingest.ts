@@ -6,10 +6,8 @@ const run = async (): Promise<void> => {
 
   try {
     const { fetchAndIngestNews } = await import('@/services/news.service');
-    const { fetchAndIngestPlayerStatusesFromLeague } = await import('@/services/player-status.service');
     const count = await fetchAndIngestNews();
-    const playerStatusCount = await fetchAndIngestPlayerStatusesFromLeague();
-    console.log(`[Ops] News ingestion complete. Imported: ${count}, Player statuses: ${playerStatusCount}`);
+    console.log(`[Ops] News ingestion complete. Imported: ${count}`);
   } catch (error) {
     console.error('[Ops] News ingestion failed:', error);
     process.exit(1);

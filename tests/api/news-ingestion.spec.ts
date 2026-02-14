@@ -10,6 +10,9 @@ test.describe('News Ingestion API', () => {
 
     test('POST /api/news/sync should trigger ingestion', async ({ request }) => {
         const response = await request.post('/api/news/sync', {
+            headers: {
+                'x-fanvise-sync-intent': 'manual-news-sync',
+            },
             data: {
                 leagueId: 'test-league',
                 teamId: 'test-team', // Dummy data to bypass initial checks if any, though logic allows partials
@@ -45,6 +48,9 @@ test.describe('News Ingestion API', () => {
         test.slow(); // Mark test as slow since backfill involves multiple calls
 
         const response = await request.post('/api/news/sync', {
+            headers: {
+                'x-fanvise-sync-intent': 'manual-news-sync',
+            },
             data: {
                 backfill: true
             }

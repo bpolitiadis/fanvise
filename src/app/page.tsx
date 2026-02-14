@@ -18,7 +18,9 @@ export default function Home() {
   const { activeLeague, activeLeagueId, activeTeamId, isLoading: contextLoading } = usePerspective();
   const [news, setNews] = useState<NewsItem[]>([]);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLeagueSyncing, setIsLeagueSyncing] = useState(false);
+  const [isNewsSyncing, setIsNewsSyncing] = useState(false);
+  const [lastNewsSyncAt, setLastNewsSyncAt] = useState<string | null>(null);
 
   useEffect(() => {
     getLatestNews(10).then(data => setNews(data as NewsItem[]));
@@ -30,9 +32,9 @@ export default function Home() {
     }
   }, [activeLeagueId]);
 
-  const handleSync = async () => {
+  const handleLeagueSync = async () => {
     if (!activeLeagueId) return;
-    setIsSyncing(true);
+    setIsLeagueSyncing(true);
     try {
         const leagueSyncResponse = await fetch('/api/sync', { method: 'POST' });
         if (!leagueSyncResponse.ok) {
@@ -46,24 +48,56 @@ export default function Home() {
         const latestTx = await getLatestTransactions(activeLeagueId, 10);
         setTransactions(latestTx as TransactionItem[]);
 
-        // Run News Sync with Roster Intelligence
-        console.log("[Dashboard] Triggering News Sync...");
-        const newsSyncResponse = await fetch('/api/news/sync', {
-            method: 'POST',
-            body: JSON.stringify({ leagueId: activeLeagueId, teamId: activeTeamId }),
-            headers: { 'Content-Type': 'application/json' }
+        const playerStatusResponse = await fetch('/api/sync/player-status', {
+          method: 'POST'
         });
-        const newsSyncResult = await newsSyncResponse.json();
-        console.log(`[Dashboard] News Sync complete: ${newsSyncResult.count} items imported`);
+        if (!playerStatusResponse.ok) {
+          throw new Error("Player status sync failed");
+        }
 
-        // Refresh news as well if needed
-        const latestNews = await getLatestNews(15); 
-        setNews(latestNews as NewsItem[]);
-        console.log("Sync successful");
+        const leadersSyncResponse = await fetch('/api/sync/daily-leaders', {
+          method: 'POST'
+        });
+        if (!leadersSyncResponse.ok) {
+          throw new Error("Daily leaders sync failed");
+        }
+
+        console.log("League sync successful");
     } catch (error) {
-        console.error("Sync failed:", error);
+        console.error("League sync failed:", error);
     } finally {
-        setIsSyncing(false);
+        setIsLeagueSyncing(false);
+    }
+  };
+
+  const handleNewsSync = async () => {
+    if (!activeLeagueId) return;
+    setIsNewsSyncing(true);
+    try {
+      console.log("[Dashboard] Triggering News Sync...");
+      const newsSyncResponse = await fetch('/api/news/sync', {
+        method: 'POST',
+        body: JSON.stringify({ leagueId: activeLeagueId, teamId: activeTeamId }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-fanvise-sync-intent': 'manual-news-sync',
+        }
+      });
+
+      if (!newsSyncResponse.ok) {
+        throw new Error("News sync failed");
+      }
+
+      const newsSyncResult = await newsSyncResponse.json();
+      console.log(`[Dashboard] News Sync complete: ${newsSyncResult.count} items imported`);
+      setLastNewsSyncAt(new Date().toISOString());
+
+      const latestNews = await getLatestNews(15);
+      setNews(latestNews as NewsItem[]);
+    } catch (error) {
+      console.error("News sync failed:", error);
+    } finally {
+      setIsNewsSyncing(false);
     }
   };
 
@@ -94,8 +128,11 @@ export default function Home() {
         <DashboardHeader 
           leagueName={league.name || "No League"}
           seasonId={league.season_id || "2025"}
-          isSyncing={isSyncing}
-          onSync={handleSync}
+          isLeagueSyncing={isLeagueSyncing}
+          isNewsSyncing={isNewsSyncing}
+          onLeagueSync={handleLeagueSync}
+          onNewsSync={handleNewsSync}
+          lastNewsSyncAt={lastNewsSyncAt}
           activeLeagueId={activeLeagueId}
         />
 

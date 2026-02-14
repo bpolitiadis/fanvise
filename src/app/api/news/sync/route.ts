@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAndIngestNews } from "@/services/news.service";
-import { fetchAndIngestPlayerStatusesFromLeague } from "@/services/player-status.service";
 import { EspnClient } from "@/lib/espn/client";
 import type { EspnTeam } from "@/lib/espn/types";
 
@@ -12,8 +11,30 @@ interface EspnRosterEntryLite {
     };
 }
 
+const MANUAL_NEWS_SYNC_INTENT = "manual-news-sync";
+
 export async function POST(req: NextRequest) {
     try {
+        const syncIntent = req.headers.get("x-fanvise-sync-intent");
+        if (syncIntent !== MANUAL_NEWS_SYNC_INTENT) {
+            return NextResponse.json(
+                { success: false, error: "News sync requires explicit manual intent." },
+                { status: 403 }
+            );
+        }
+
+        const origin = req.headers.get("origin");
+        if (origin) {
+            const originHost = new URL(origin).host;
+            const requestHost = req.headers.get("host");
+            if (requestHost && originHost !== requestHost) {
+                return NextResponse.json(
+                    { success: false, error: "Cross-origin manual news sync is blocked." },
+                    { status: 403 }
+                );
+            }
+        }
+
         const { leagueId, teamId, backfill, limit, dryRun } = await req.json();
         const watchlist: string[] = [];
 
@@ -56,14 +77,12 @@ export async function POST(req: NextRequest) {
             count = await fetchAndIngestNews(watchlist, ingestionLimit, dryRun);
         }
 
-        const playerStatusCount = await fetchAndIngestPlayerStatusesFromLeague();
-
         return NextResponse.json({
             success: true,
             count,
-            playerStatusCount,
             watchlistSize: watchlist.length,
             backfill: !!backfill,
+            mode: "news-only",
         });
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Internal server error during sync";

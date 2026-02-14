@@ -43,3 +43,24 @@ graph TD
 - **Database/Auth**: Supabase (PostgreSQL + pgvector)
 - **AI Models**: Google Gemini 2.0 Flash (via Google Generative AI SDK)
 - **Data Ingestion**: Custom TypeScript clients for ESPN and RSS scraping.
+
+## Sync Orchestration
+
+FanVise now separates league synchronization from news intelligence ingestion so costly AI/pgvector writes only happen on explicit paths.
+
+- **Scheduled News Sync (automatic, restricted):**
+  - Route: `GET /api/cron/news`
+  - Scope: **news-only** ingestion (`fetchAndIngestNews`) with Gemini extraction/embeddings.
+  - Guardrails: production-only, optional `CRON_SECRET`, and strict UTC windows (`11:00` and `22:00`).
+  - Trigger: GitHub Actions workflow `.github/workflows/news-ingest-cron.yml`.
+
+- **Manual News Sync (operator action):**
+  - Route: `POST /api/news/sync`
+  - Scope: **news-only** ingestion/backfill.
+  - Guardrails: requires explicit intent header `x-fanvise-sync-intent: manual-news-sync`.
+  - UI: Dashboard `Sync News` button with last-sync label.
+
+- **League Sync (separate from news):**
+  - Routes: `POST /api/sync`, `POST /api/sync/player-status`, `POST /api/sync/daily-leaders`
+  - Scope: ESPN league metadata, transactions, player status snapshots, and daily leaders.
+  - UI: Dashboard `Sync League` button.
