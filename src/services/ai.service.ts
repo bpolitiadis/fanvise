@@ -164,7 +164,14 @@ async function generateGeminiStream(
         history: geminiHistory as NonNullable<Parameters<typeof model.startChat>[0]>["history"],
     });
 
-    const result = await withRetry(() => chat.sendMessageStream(message));
+    // Keep streaming startup retry budget tight on Vercel to avoid runtime timeouts.
+    const streamRetries = IS_VERCEL_RUNTIME ? 2 : 4;
+    const streamInitialDelayMs = IS_VERCEL_RUNTIME ? 1000 : 2000;
+    const result = await withRetry(
+        () => chat.sendMessageStream(message),
+        streamRetries,
+        streamInitialDelayMs
+    );
 
     // Transform Gemini stream to simple text stream
     return {

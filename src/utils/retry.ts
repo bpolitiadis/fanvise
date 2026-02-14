@@ -49,12 +49,17 @@ export async function withRetry<T>(
                 // If the error message contains a specific retry delay (e.g. "Please retry in 22.8s")
                 // we try to extract and honor it, otherwise use exponential backoff
                 let delay = initialDelay * Math.pow(2, attempt);
+                const maxDelayMs = Number(process.env.RETRY_MAX_DELAY_MS ?? (process.env.VERCEL ? 4000 : 60000));
 
                 const match = message.match(/retry in ([\d.]+)s/i);
                 if (match) {
                     const seconds = parseFloat(match[1]);
                     delay = Math.max(delay, (seconds + 1) * 1000); // Add a buffer
                 }
+
+                // Production-safe cap: avoid very long backoff windows that exceed
+                // serverless execution budgets and appear as "hanging" requests.
+                delay = Math.min(delay, maxDelayMs);
 
                 console.warn(
                     `API rate limited (429) - Retrying in ${Math.round(delay / 1000)}s (Attempt ${attempt + 1}/${maxRetries})`
