@@ -18,7 +18,7 @@ import type { SupportedLanguage } from "@/types/ai";
 import { generateStreamingResponse } from "@/services/ai.service";
 import type { ChatMessage } from "@/types/ai";
 import { buildIntelligenceSnapshot } from "@/services/league.service";
-import { searchNews } from "@/services/news.service";
+import { searchNews, searchPlayerStatusSnapshots } from "@/services/news.service";
 
 interface NewsItem {
     id?: string | null;
@@ -35,6 +35,48 @@ interface NewsItem {
     expected_return_date?: string | null;
     similarity?: number | null;
 }
+
+interface PlayerStatusItem {
+    player_id: number;
+    player_name: string;
+    injury_status: string | null;
+    injury_type: string | null;
+    expected_return_date: string | null;
+    last_news_date: string | null;
+    injured: boolean | null;
+    source: string | null;
+}
+
+const INJURY_QUERY_TERMS = ['injury', 'injuries', 'gtd', 'dtd', 'questionable', 'out', 'doubtful', 'ofs', 'available', 'availability', 'day-to-day'];
+const PLAYER_QUERY_NOISE = new Set([
+    'nba', 'fantasy', 'basketball', 'news', 'latest', 'update', 'updates', 'report', 'reports',
+    'status', 'timeline', 'return', 'returns', 'injury', 'injuries', 'availability', 'available',
+    'questionable', 'doubtful', 'out', 'gtd', 'dtd', 'ofs', 'drop', 'hold', 'start', 'sit'
+]);
+
+const normalizeForMatch = (value: string) => value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+const isInjuryOrAvailabilityQuery = (message: string): boolean => {
+    const normalized = message.toLowerCase();
+    return INJURY_QUERY_TERMS.some(term => normalized.includes(term));
+};
+
+const extractRequestedPlayers = (message: string): string[] => {
+    const normalized = message.replace(/[^a-zA-Z0-9\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!normalized) return [];
+
+    const explicit = (normalized.match(/\b(?:[A-Z]{2,}|[A-Z][a-z]+)(?:\s+(?:[A-Z]{2,}|[A-Z][a-z]+)){1,2}\b/g) || [])
+        .map(phrase => normalizeForMatch(phrase))
+        .filter(phrase => phrase.split(' ').some(token => !PLAYER_QUERY_NOISE.has(token)));
+
+    const lowerTokens = normalized
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(token => token.length >= 2 && !PLAYER_QUERY_NOISE.has(token));
+    const fallback = lowerTokens.length >= 2 ? [`${lowerTokens[0]} ${lowerTokens[1]}`] : [];
+
+    return Array.from(new Set([...explicit, ...fallback])).slice(0, 3);
+};
 
 export interface IntelligenceOptions {
     activeTeamId?: string | null;
@@ -66,9 +108,12 @@ export async function generateStrategicResponse(
         ? buildIntelligenceSnapshot(activeLeagueId as string, activeTeamId as string)
         : Promise.resolve(null);
 
-    const [newsResult, snapshotResult] = await Promise.allSettled([
+    const playerStatusPromise = searchPlayerStatusSnapshots(currentMessage, 5);
+
+    const [newsResult, snapshotResult, playerStatusResult] = await Promise.allSettled([
         newsPromise,
         snapshotPromise,
+        playerStatusPromise,
     ]);
 
     // 1. Fetch News Context (RAG)
@@ -92,6 +137,11 @@ export async function generateStrategicResponse(
         };
     };
 
+    const injuryQuery = isInjuryOrAvailabilityQuery(currentMessage);
+    const requestedPlayers = extractRequestedPlayers(currentMessage);
+    const playerStatusItems: PlayerStatusItem[] = playerStatusResult.status === "fulfilled" && Array.isArray(playerStatusResult.value)
+        ? playerStatusResult.value as PlayerStatusItem[]
+        : [];
     let newsContext = "";
     if (newsResult.status === "fulfilled" && Array.isArray(newsResult.value) && newsResult.value.length > 0) {
         const seenUrls = new Set<string>();
@@ -108,6 +158,16 @@ export async function generateStrategicResponse(
                 const bTime = b.published_at ? new Date(b.published_at).getTime() : 0;
                 return bTime - aTime;
             });
+        const hasVerifiedTuple = (item: NewsItem) => Boolean(item.player_name && item.injury_status && item.published_at && item.source);
+        const playerMatchesRequested = (item: NewsItem) => {
+            if (requestedPlayers.length === 0) return true;
+            const candidate = normalizeForMatch(`${item.player_name || ''} ${item.title || ''} ${item.summary || ''}`);
+            return requestedPlayers.some(player => candidate.includes(player));
+        };
+        const verifiedTuples = orderedItems.filter(item => hasVerifiedTuple(item) && playerMatchesRequested(item));
+        const verifiedTupleLines: string[] = verifiedTuples
+            .slice(0, 10)
+            .map(tuple => `- (${tuple.player_name}, ${tuple.injury_status}, ${tuple.published_at}, ${tuple.source})`);
 
         newsContext = orderedItems
             .map((typedItem) => {
@@ -123,8 +183,46 @@ export async function generateStrategicResponse(
                 return `- [${typedItem.published_at || 'Recent'}]${sourceTag}${playerTag}${statusTag}${trustTag}${similarityTag}${returnTag}${injuryTag} ${typedItem.title || "News"}: ${description}${description.length === 280 ? '...' : ''}${urlLine}`;
             })
             .join("\n");
+
+        if (playerStatusItems.length > 0) {
+            const statusContext = playerStatusItems
+                .map((status) => {
+                    const statusText = status.injury_status || (status.injured ? "INJURED" : "ACTIVE");
+                    const injuryType = status.injury_type ? ` (${status.injury_type})` : "";
+                    const returnText = status.expected_return_date ? ` [RETURN: ${status.expected_return_date}]` : "";
+                    const asOf = status.last_news_date || "recent";
+                    return `- [${asOf}] [SOURCE: ${status.source || "ESPN_PLAYERCARD"}] [PLAYER: ${status.player_name}] [STATUS: ${statusText}]${returnText}${injuryType}`;
+                })
+                .join("\n");
+            newsContext = `${newsContext}\n\nESPN Player Status Snapshots:\n${statusContext}`;
+
+            const playerCardVerified = playerStatusItems
+                .filter(item => Boolean(item.player_name && item.injury_status && item.last_news_date))
+                .map(item => `- (${item.player_name}, ${item.injury_status}, ${item.last_news_date}, ${item.source || "ESPN_PLAYERCARD"})`);
+            verifiedTupleLines.push(...playerCardVerified);
+        }
+
+        if (verifiedTupleLines.length > 0) {
+            const tupleContext = verifiedTupleLines.slice(0, 10).join('\n');
+            newsContext = `${newsContext}\n\nVerified Status Tuples:\n${tupleContext}`;
+        } else if (injuryQuery) {
+            newsContext = `STATUS_GUARDRAIL: No verified status tuple exists for the requested player(s). For injury/availability or drop decisions, respond exactly: "Insufficient verified status data."\n${newsContext}`;
+        }
     } else if (newsResult.status === "rejected") {
         console.error("[Intelligence Service] Failed to fetch news:", newsResult.reason);
+    } else if (playerStatusItems.length > 0) {
+        const statusContext = playerStatusItems
+            .map((status) => {
+                const statusText = status.injury_status || (status.injured ? "INJURED" : "ACTIVE");
+                const injuryType = status.injury_type ? ` (${status.injury_type})` : "";
+                const returnText = status.expected_return_date ? ` [RETURN: ${status.expected_return_date}]` : "";
+                const asOf = status.last_news_date || "recent";
+                return `- [${asOf}] [SOURCE: ${status.source || "ESPN_PLAYERCARD"}] [PLAYER: ${status.player_name}] [STATUS: ${statusText}]${returnText}${injuryType}`;
+            })
+            .join("\n");
+        newsContext = `ESPN Player Status Snapshots:\n${statusContext}`;
+    } else if (injuryQuery) {
+        newsContext = 'STATUS_GUARDRAIL: No verified status tuple exists for the requested player(s). For injury/availability or drop decisions, respond exactly: "Insufficient verified status data."';
     }
 
     // 2. Build Intelligence Snapshot & System Prompt

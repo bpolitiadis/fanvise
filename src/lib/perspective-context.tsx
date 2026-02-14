@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import { getNormalizedTeamLogoUrl } from '@/lib/espn/team-logo'
 
 // --- Types ---
 
@@ -34,6 +35,14 @@ export interface Team {
   losses?: number
   ties?: number
   is_user_owned?: boolean
+}
+
+const normalizeTeams = (teams: Team[] | undefined): Team[] => {
+  if (!Array.isArray(teams)) return []
+  return teams.map((team) => ({
+    ...team,
+    logo: getNormalizedTeamLogoUrl(team.logo),
+  }))
 }
 
 interface PerspectiveState {
@@ -106,12 +115,17 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
       }
       if (!leagueData) throw new Error('League not found')
 
-      const league = leagueData as League
+      const rawLeague = leagueData as League
+      const teams = normalizeTeams(rawLeague.teams as Team[] | undefined)
+      const league: League = {
+        ...rawLeague,
+        teams,
+      }
       setActiveLeague(league)
       setActiveLeagueId(league.league_id)
 
       // 3. Set Active Team if teamId is provided
-      const teams = (league.teams as Team[]) || []
+      
       
       if (teamId) {
         const team = teams.find(t => String(t.id) === String(teamId))
