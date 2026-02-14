@@ -244,4 +244,46 @@ export class EspnClient {
             throw error;
         }
     }
+
+    /**
+     * Fetches the ESPN player card payload for a single player.
+     * This endpoint includes canonical injury metadata used by fantasy UI.
+     */
+    async getPlayerCard(playerId: number, scoringPeriodId?: number) {
+        const params: Record<string, string | number> = {};
+        if (typeof scoringPeriodId === 'number' && Number.isFinite(scoringPeriodId)) {
+            params.scoringPeriodId = Math.floor(scoringPeriodId);
+        }
+
+        const url = this.buildLeagueUrl(["kona_playercard"], params);
+        const headers = this.getHeaders() as Record<string, string>;
+        headers["x-fantasy-filter"] = JSON.stringify({
+            players: {
+                filterIds: { value: [playerId] },
+            },
+        });
+        headers["x-fantasy-platform"] = "espn-fantasy-web";
+        headers["x-fantasy-source"] = "kona";
+
+        console.log(`Fetching Player Card (${playerId}): ${url}`);
+
+        const response = await fetch(url, {
+            headers,
+            next: { revalidate: 60 },
+        });
+
+        if (!response.ok) {
+            const text = await response.text().catch(() => "");
+            console.error(`ESPN Player Card Error (${response.status}) for ${playerId}:`, text.substring(0, 500));
+            throw new Error(`ESPN Player Card Error: ${response.status} ${response.statusText}`);
+        }
+
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch {
+            console.error(`Failed to parse ESPN player card response for ${playerId}:`, text.substring(0, 500));
+            throw new Error(`Invalid JSON from ESPN player card: ${text.substring(0, 200)}...`);
+        }
+    }
 }
