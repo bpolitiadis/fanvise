@@ -31,6 +31,8 @@ export interface IntelligenceSnapshot {
     schedule?: WeeklySchedule;
     /** Top available free agents */
     freeAgents?: Player[];
+    /** Recent league transactions */
+    transactions?: string[];
     /** Timestamp of when snapshot was built */
     builtAt: string;
 }

@@ -579,12 +579,14 @@ export async function searchNews(query: string, limit = 15) {
         const embedding = await getEmbedding(query);
         console.log(`Searching news with embedding (dim: ${embedding.length}) for: "${query.substring(0, 30)}..."`);
 
-        // 2. Vector retrieval via RPC (14-day window for long-term injury tracking)
+        // 2. Vector retrieval via RPC (Adaptive window: 30 days for injury, 14 days for general)
+        const daysBack = searchIntent.isInjuryQuery ? 30 : 14;
+
         const { data: vectorData, error: vectorError } = await supabase.rpc('match_news_documents', {
             query_embedding: embedding,
             match_threshold: 0.25, // Slightly lower threshold to be more inclusive
             match_count: Math.max(limit * 2, 20),
-            days_back: 14
+            days_back: daysBack
         });
 
         if (vectorError) {
@@ -594,7 +596,7 @@ export async function searchNews(query: string, limit = 15) {
         // 3. Lightweight lexical retrieval fallback (hybrid behavior without DB migration)
         const terms = getQueryTerms(query);
         const lexicalTerms = Array.from(new Set([...terms, ...searchIntent.playerTokens]));
-        const cutoff = toIsoDaysAgo(14);
+        const cutoff = toIsoDaysAgo(daysBack);
         let lexicalRows: SearchNewsItem[] = [];
 
         if (lexicalTerms.length > 0) {

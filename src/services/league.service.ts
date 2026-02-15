@@ -499,6 +499,66 @@ const fetchFreeAgentsCached = unstable_cache(
 );
 
 // ============================================================================
+// Transaction Processing
+// ============================================================================
+
+/**
+ * Processes raw ESPN transaction data into human-readable strings.
+ * 
+ * @param transactions - Raw transaction objects from ESPN
+ * @param teams - Database team objects for name resolution
+ * @returns Array of formatted transaction strings (limited to last 10)
+ */
+function processTransactions(transactions: any[], teams: DbTeam[]): string[] {
+    if (!Array.isArray(transactions)) return [];
+
+    // Create a map of team ID to team name/abbrev
+    const teamMap = new Map<number, string>();
+    teams.forEach(t => {
+        teamMap.set(Number(t.id), t.abbrev || t.name);
+    });
+
+    // Filter for relevant types (WAIVER, FREEAGENT, TRADE) and EXECUTED status
+    const relevantTypes = ['WAIVER', 'FREEAGENT', 'TRADE'];
+
+    // Sort by date descending (newest first)
+    const sorted = [...transactions]
+        .filter(t => relevantTypes.includes(t.type) && t.status === 'EXECUTED')
+        .sort((a, b) => b.processDate - a.processDate);
+
+    return sorted.slice(0, 10).map(t => {
+        const teamName = teamMap.get(t.teamId) || `Team ${t.teamId || 'Unknown'}`;
+        const date = new Date(t.processDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        // Process items (players added/dropped)
+        const items = t.items || [];
+        const additions: string[] = [];
+        const drops: string[] = [];
+
+        items.forEach((item: any) => {
+            const playerName = item.playerPoolEntry?.player?.fullName || 'Unknown Player';
+            if (item.type === 'ADD') additions.push(playerName);
+            if (item.type === 'DROP') drops.push(playerName);
+        });
+
+        let actionDescription = '';
+        if (t.type === 'TRADE') {
+            actionDescription = `Trade executed containing ${additions.length + drops.length} players.`;
+            // Trades are complex in ESPN API, simplified representation for now
+            return `[${date}] TRADE: ${teamName} involved in a trade.`;
+        } else {
+            const parts = [];
+            if (additions.length > 0) parts.push(`Added ${additions.join(', ')}`);
+            if (drops.length > 0) parts.push(`Dropped ${drops.join(', ')}`);
+            actionDescription = parts.join(', ');
+        }
+
+        return `[${date}] ${teamName}: ${actionDescription}`;
+    });
+}
+
+
+// ============================================================================
 // Main API
 // ============================================================================
 
@@ -611,7 +671,21 @@ export async function buildIntelligenceSnapshot(
         console.error('[League Service] Failed to fetch free agents:', faError);
     }
 
-    // 6. Build and return snapshot
+    // 6. Fetch Recent Transactions
+    let transactions: string[] = [];
+    try {
+        const espnClient = new EspnClient(leagueId, league.season_id, process.env.NEXT_PUBLIC_ESPN_SPORT || 'fba', process.env.ESPN_SWID, process.env.ESPN_S2);
+        const txnData = await withRetry(() => espnClient.getTransactions(), 3, 1000);
+
+        if (txnData && txnData.transactions) {
+            transactions = processTransactions(txnData.transactions, league.teams || []);
+            console.log(`[League Service] Processed ${transactions.length} recent transactions.`);
+        }
+    } catch (txnError) {
+        console.error('[League Service] Failed to fetch transactions:', txnError);
+    }
+
+    // 7. Build and return snapshot
     return {
         league: {
             id: league.league_id,
@@ -628,6 +702,7 @@ export async function buildIntelligenceSnapshot(
         matchup,
         schedule,
         freeAgents,
+        transactions,
         builtAt: new Date().toISOString(),
     };
 }
