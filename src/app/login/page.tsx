@@ -27,7 +27,9 @@ const GoogleIcon = () => (
   </svg>
 );
 
-export default function LoginPage() {
+import { Suspense } from "react";
+
+function LoginContent() {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const searchParams = useSearchParams();
@@ -56,48 +58,56 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <section className="w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-sm">
-        <div className="mb-6 space-y-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Welcome to FanVise</h1>
-          <p className="text-sm text-muted-foreground">
-            Sign in with Google to launch your real-time fantasy intelligence cockpit.
-          </p>
-        </div>
+    <section className="w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-sm">
+      <div className="mb-6 space-y-2 text-center">
+        <h1 className="text-2xl font-semibold tracking-tight">Welcome to FanVise</h1>
+        <p className="text-sm text-muted-foreground">
+          Sign in with Google to launch your real-time fantasy intelligence cockpit.
+        </p>
+      </div>
 
-        <Button
-          type="button"
-          className="h-11 w-full gap-2"
-          onClick={startGoogleSignIn}
-          disabled={isRedirecting}
-        >
-          {isRedirecting ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Redirecting to Google...
-            </>
-          ) : (
-            <>
-              <GoogleIcon />
-              Sign in with Google
-            </>
-          )}
-        </Button>
-
+      <Button
+        type="button"
+        className="h-11 w-full gap-2"
+        onClick={startGoogleSignIn}
+        disabled={isRedirecting}
+      >
         {isRedirecting ? (
-          <div className="mt-4 space-y-2" aria-live="polite" aria-busy="true">
-            <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
-            <div className="h-3 w-full animate-pulse rounded bg-muted" />
-          </div>
-        ) : null}
-
-        {(searchParams.get("error") || errorMessage) && (
-          <p className="mt-4 text-sm text-destructive">
-            {errorMessage ??
-              "Authentication failed. Please try again or check your Supabase redirect URLs."}
-          </p>
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Redirecting to Google...
+          </>
+        ) : (
+          <>
+            <GoogleIcon />
+            Sign in with Google
+          </>
         )}
-      </section>
+      </Button>
+
+      {isRedirecting ? (
+        <div className="mt-4 space-y-2" aria-live="polite" aria-busy="true">
+          <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+          <div className="h-3 w-full animate-pulse rounded bg-muted" />
+        </div>
+      ) : null}
+
+      {(searchParams.get("error") || errorMessage) && (
+        <p className="mt-4 text-sm text-destructive">
+          {errorMessage ??
+            "Authentication failed. Please try again or check your Supabase redirect URLs."}
+        </p>
+      )}
+    </section>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center px-4">
+      <Suspense fallback={<div className="h-32 w-32 animate-pulse rounded-full bg-muted" />}>
+        <LoginContent />
+      </Suspense>
     </main>
   );
 }
