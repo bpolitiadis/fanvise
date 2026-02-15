@@ -166,6 +166,7 @@ export function contextFromSnapshot(
         matchup?: MatchupContext;
         schedule?: ScheduleContext;
         freeAgents?: PlayerContext[];
+        transactions?: string[];
     },
     language: SupportedLanguage = 'en',
     newsContext?: string
@@ -184,6 +185,7 @@ export function contextFromSnapshot(
         positionalRatings: snapshot.league.positionalRatings,
         liveScoring: snapshot.league.liveScoring,
         freeAgents: snapshot.freeAgents,
+        transactions: snapshot.transactions,
     };
 }
 

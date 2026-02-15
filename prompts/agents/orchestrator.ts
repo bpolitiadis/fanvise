@@ -96,6 +96,14 @@ function formatFreeAgents(players?: PlayerContext[]): string {
     }).join('\n');
 }
 
+/**
+ * Formats recent transactions for prompt injection.
+ */
+function formatTransactions(transactions?: string[]): string {
+    if (!transactions || transactions.length === 0) return 'No recent transactions.';
+    return transactions.map(t => `- ${t}`).join('\n');
+}
+
 // ============================================================================
 // English Template
 // ============================================================================
@@ -174,6 +182,9 @@ ${ctx.schedule.myGamesRemaining > ctx.schedule.opponentGamesRemaining ? '⚡ **V
 
 ## Top Available Free Agents (Waiver Wire)
 ${formatFreeAgents(ctx.freeAgents)}
+
+## Recent League Transactions
+${formatTransactions(ctx.transactions)}
 
 ## Real-Time Intelligence (RAG)
 ${ctx.newsContext || 'No real-time intelligence items available.'}
@@ -261,6 +272,9 @@ ${ctx.schedule.myGamesRemaining > ctx.schedule.opponentGamesRemaining ? '⚡ **�
 
 ## Κορυφαίοι Free Agents (Waiver Wire)
 ${formatFreeAgents(ctx.freeAgents)}
+
+## Πρόσφατες Συναλλαγές (Transactions)
+${formatTransactions(ctx.transactions)}
 
 ## Real-Time Intelligence (RAG)
 ${ctx.newsContext || 'Δεν υπάρχουν διαθέσιμες πληροφορίες.'}

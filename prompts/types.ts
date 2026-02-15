@@ -54,6 +54,8 @@ export interface PromptContext {
     pendingTransactions?: Array<Record<string, unknown>>;
     /** Top available free agents */
     freeAgents?: Player[];
+    /** Recent league transactions */
+    transactions?: string[];
 }
 
 // ============================================================================
@@ -137,6 +139,7 @@ export const PromptContextSchema = z.object({
     schedule: ScheduleContextSchema.optional(),
     newsContext: z.string().optional(),
     freeAgents: z.array(PlayerContextSchema).optional(),
+    transactions: z.array(z.string()).optional(),
 });
 
 // Re-export AI structured response schema from centralized location
