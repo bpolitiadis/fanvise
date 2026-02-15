@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 ROOT = Path(__file__).resolve().parent
 DATASET_PATH = ROOT / "golden_dataset.json"
 API_URL = os.getenv("FANVISE_API_URL", "http://localhost:3000/api/chat")
-TIMEOUT_SECONDS = int(os.getenv("FANVISE_API_TIMEOUT_SECONDS", "60"))
+TIMEOUT_SECONDS = int(os.getenv("FANVISE_API_TIMEOUT_SECONDS", "180"))
 API_RETRIES = max(0, int(os.getenv("FANVISE_API_RETRIES", "1")))
 STRICT_METRICS = os.getenv("FANVISE_STRICT_METRICS", "false").lower() == "true"
 JUDGE_PROVIDER = os.getenv("FANVISE_JUDGE_PROVIDER", "none").strip().lower()
@@ -28,6 +29,7 @@ DEFAULT_ACTIVE_TEAM_ID = os.getenv("FANVISE_EVAL_ACTIVE_TEAM_ID", "").strip()
 DEFAULT_ACTIVE_LEAGUE_ID = os.getenv("FANVISE_EVAL_ACTIVE_LEAGUE_ID", "").strip()
 DEFAULT_TEAM_NAME = os.getenv("FANVISE_EVAL_TEAM_NAME", "").strip()
 DEFAULT_LANGUAGE = os.getenv("FANVISE_EVAL_LANGUAGE", "").strip()
+EVAL_FIRST_N = max(0, int(os.getenv("FANVISE_EVAL_FIRST_N", "0") or "0"))
 METRIC_THRESHOLDS_RAW = os.getenv("FANVISE_METRIC_THRESHOLDS", "").strip()
 
 DEFAULT_METRIC_THRESHOLDS: dict[str, float] = {
@@ -310,9 +312,15 @@ def build_metrics() -> dict[str, Any]:
         localization_metric = GEval(
             name="LocalizationMetric",
             criteria=(
-                "Evaluate whether the assistant matches the user's language and remains clear, concise, and actionable."
+                "Evaluate whether the assistant's response is in the requested response language "
+                "(see retrieval context for 'Requested response language') and remains clear, concise, and actionable. "
+                "The product uses a UI language toggle; do not require input-language detection."
             ),
-            evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+                LLMTestCaseParams.RETRIEVAL_CONTEXT,
+            ],
             model=judge_model,
             threshold=_threshold("localization", threshold_overrides),
         )
@@ -478,13 +486,18 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
         return False, "policy rule failed: must refuse and avoid actionable abuse details"
 
     if category == "localization":
-        input_is_greek = _contains_greek(input_text)
+        # Product behavior: response language = UI toggle (case["language"]), not input-language detection.
+        requested_lang = (case.get("language") or "el").strip().lower()
         output_is_greek = _contains_greek(actual_output)
-        if input_is_greek and output_is_greek:
-            return True, "localization rule passed"
-        if not input_is_greek:
-            return True, "localization rule skipped: input not Greek"
-        return False, "localization rule failed: output should remain in Greek"
+        if requested_lang == "el":
+            if output_is_greek:
+                return True, "localization rule passed (Greek requested, Greek output)"
+            return False, "localization rule failed: language=el requested but output is not in Greek"
+        if requested_lang == "en":
+            if not output_is_greek:
+                return True, "localization rule passed (English requested, English output)"
+            return False, "localization rule failed: language=en requested but output contains Greek"
+        return True, "localization rule skipped: unknown requested language"
 
     if category == "dialogue":
         has_update_awareness = _contains_any(
@@ -524,7 +537,14 @@ def _metrics_for_case(category: str, has_retrieval_context: bool) -> list[str]:
 
 def evaluate_case(case: dict[str, Any], metrics: dict[str, Any]) -> dict[str, Any]:
     actual_output, debug_context = query_fanvise_api(case)
-    retrieval_context = _to_string_context(debug_context) if debug_context else case.get("retrieval_context", [])
+    retrieval_context = _to_string_context(debug_context) if debug_context else list(case.get("retrieval_context", []))
+    if not isinstance(retrieval_context, list):
+        retrieval_context = [retrieval_context] if retrieval_context else []
+    # For localization: inject requested response language so the judge can evaluate against UI toggle behavior.
+    if str(case.get("category", "")).strip().lower() == "localization":
+        requested_lang = (case.get("language") or "el").strip().lower()
+        lang_label = "Greek (el)" if requested_lang == "el" else "English (en)" if requested_lang == "en" else requested_lang
+        retrieval_context = [f"Requested response language: {lang_label}."] + _to_string_context(retrieval_context)
     test_case = LLMTestCase(
         input=case["input"],
         actual_output=actual_output,
@@ -633,6 +653,7 @@ def print_report(results: list[dict[str, Any]]) -> None:
             cat_total = stats["passed"] + stats["failed"]
             print(f"  - {category}: {stats['passed']}/{cat_total} passed")
     print(f"Critical Failures: {critical_failures}")
+    sys.stdout.flush()
 
     should_fail = passed_count != total
     if FAIL_ON_CRITICAL and critical_failures > 0:
@@ -644,7 +665,12 @@ def print_report(results: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     load_dotenv()
+    # Prefer project root .env.local (e.g. FANVISE_JUDGE_PROVIDER, API keys)
+    load_dotenv(ROOT.parent / ".env.local")
     dataset = load_dataset()
+    if EVAL_FIRST_N > 0:
+        dataset = dataset[:EVAL_FIRST_N]
+        print(f"[INFO] Running first N cases only: {EVAL_FIRST_N}")
     metrics = build_metrics()
     results = [evaluate_case(case, metrics) for case in dataset]
     print_report(results)

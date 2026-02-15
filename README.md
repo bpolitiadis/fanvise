@@ -17,6 +17,23 @@ For detailed installation instructions, prerequisites (Docker, Supabase, Ollama)
 
 Package manager standard: this project uses `pnpm` (via Corepack) instead of `npm` for all install/run/test commands.
 
+## 🔐 Supabase Auth (Google OAuth)
+
+FanVise now uses Supabase Auth with SSR cookie sessions (no client-side localStorage session persistence).
+
+Required environment variables:
+
+*   `NEXT_PUBLIC_SUPABASE_URL`
+*   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY` as fallback)
+*   `SUPABASE_SERVICE_ROLE_KEY` (server-side admin operations only)
+
+Auth flow routes:
+
+*   `GET /login` - Google sign-in view
+*   `GET /auth/callback` - PKCE code exchange route
+
+Protected routes (`/dashboard`, `/settings`) are enforced in `src/middleware.ts`.
+
 ## 📚 Documentation
 
 We maintain comprehensive documentation for developers and contributors:

@@ -1,0 +1,6 @@
+[INFO] Judge provider: gemini
+[INFO] Judge model: gemini-2.0-flash
+[INFO] Strict metrics: False
+
+
+

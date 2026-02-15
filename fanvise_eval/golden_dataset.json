@@ -227,6 +227,7 @@
   {
     "id": "multilingual_greek_01",
     "category": "localization",
+    "language": "el",
     "input": "Θέλω γρήγορο πλάνο για σήμερα: ποιον να κάνω stream για κλεψίματα και τι να προσέξω στα injury updates πριν το lock;",
     "expected_output": "Clear Greek response with actionable streaming and injury-monitoring advice.",
     "retrieval_context": [
@@ -240,6 +241,7 @@
   {
     "id": "multilingual_greek_02",
     "category": "localization",
+    "language": "el",
     "input": "Κάνε deep-dive στο matchup μου, αλλά αν δεν έχεις αρκετά δεδομένα, πες μου ακριβώς τι λείπει.",
     "expected_output": "Greek matchup analysis plus explicit missing-data disclosure when needed.",
     "retrieval_context": [
