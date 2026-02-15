@@ -170,6 +170,15 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
     } catch (err) {
       console.error('Failed to load perspective:', err)
       const message = err instanceof Error ? err.message : 'Failed to load perspective'
+
+      // Check for the specific Supabase JWT error
+      if (message.includes('Expected 3 parts in JWT')) {
+        console.warn('Detected malformed JWT. Signing out to clear invalid session...');
+        await supabase.auth.signOut();
+        window.location.reload(); // Reload to reset state
+        return;
+      }
+
       setError(message)
     } finally {
       setIsLoading(false)
