@@ -258,34 +258,7 @@ export class EspnClient {
 
         console.log(`Fetching Daily Leaders (scoringPeriodId=${periodId}): ${url}`);
 
-        const filters = {
-            players: {
-                limit: cappedLimit,
-                // Include both rostered and unrostered pools so we can answer:
-                // - "who shined yesterday?"
-                // - "which free agents shined yesterday?"
-                filterStatus: {
-                    value: ["FREEAGENT", "WAIVERS", "ONTEAM"],
-                },
-                // Encourage ESPN to return single-period performance buckets.
-                filterStatsForTopScoringPeriodIds: {
-                    value: [periodId],
-                },
-                filterStatsForSourceIds: {
-                    value: [0, 1],
-                },
-                filterStatsForSplitTypeIds: {
-                    value: [1],
-                },
-                sortAppliedStatTotal: {
-                    sortAsc: false,
-                    sortPriority: 1,
-                },
-            },
-        };
-
         const headers = this.getHeaders() as Record<string, string>;
-        headers["x-fantasy-filter"] = JSON.stringify(filters);
         headers["x-fantasy-platform"] = "espn-fantasy-web";
         headers["x-fantasy-source"] = "kona";
 
@@ -303,7 +276,23 @@ export class EspnClient {
         const text = await response.text();
         try {
             const parsed = JSON.parse(text);
-            return Array.isArray(parsed?.players) ? parsed.players : [];
+            const players = Array.isArray(parsed?.players) ? parsed.players : [];
+            const toNumber = (value: unknown): number => {
+                if (typeof value === "number" && Number.isFinite(value)) return value;
+                if (typeof value === "string" && value.trim()) {
+                    const parsedValue = Number(value);
+                    return Number.isFinite(parsedValue) ? parsedValue : Number.NEGATIVE_INFINITY;
+                }
+                return Number.NEGATIVE_INFINITY;
+            };
+
+            return players
+                .sort((a: unknown, b: unknown) => {
+                    const aTotal = toNumber((a as Record<string, unknown>)?.appliedStatTotal);
+                    const bTotal = toNumber((b as Record<string, unknown>)?.appliedStatTotal);
+                    return bTotal - aTotal;
+                })
+                .slice(0, cappedLimit);
         } catch {
             console.error(`Failed to parse ESPN leaders response for scoringPeriodId=${periodId}:`, text.substring(0, 500));
             throw new Error(`Invalid JSON from ESPN leaders: ${text.substring(0, 200)}...`);

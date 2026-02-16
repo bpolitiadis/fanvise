@@ -1,4 +1,4 @@
-import { createClient, createAdminClient } from '@/utils/supabase/server';
+import { createAdminClient } from '@/utils/supabase/server';
 import { EspnClient } from '@/lib/espn/client';
 import { SupabaseClient } from '@supabase/supabase-js';
 
@@ -67,7 +67,8 @@ export class ScheduleService {
             return 0;
         }
 
-        const supabase = this.supabaseClient || await createClient();
+        // Server-side sync jobs must use service-role credentials for writes.
+        const supabase = this.supabaseClient || createAdminClient();
 
         // Upsert in batches to avoid payload limits
         const BATCH_SIZE = 500;
