@@ -351,4 +351,44 @@ export class EspnClient {
             throw new Error(`Invalid JSON from ESPN player card: ${text.substring(0, 200)}...`);
         }
     }
+
+    /**
+     * Batch fetch player info for a list of player IDs.
+     * Useful for resolving names when they are missing from roster views.
+     */
+    async getPlayerInfo(playerIds: number[]) {
+        if (!playerIds.length) return [];
+
+        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=kona_player_info`;
+
+        // Remove duplicates
+        const uniqueIds = Array.from(new Set(playerIds));
+        console.log(`Fetching Player Info for ${uniqueIds.length} players...`);
+
+        const headers = this.getHeaders() as Record<string, string>;
+        headers["x-fantasy-filter"] = JSON.stringify({
+            players: {
+                filterIds: { value: uniqueIds },
+                filterStatus: { value: ["FREEAGENT", "WAIVERS", "ONTEAM"] } // Look everywhere
+            },
+        });
+
+        try {
+            const response = await fetch(url, {
+                headers,
+                next: { revalidate: 3600 } // Cache for 1 hour as names don't change often
+            });
+
+            if (!response.ok) {
+                throw new Error(`ESPN API Error: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            return data.players || [];
+        } catch (error) {
+            console.error("Failed to fetch player info batch:", error);
+            // Return empty array to allow partial success elsewhere
+            return [];
+        }
+    }
 }

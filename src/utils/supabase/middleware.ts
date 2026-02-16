@@ -25,18 +25,18 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-    // IMPORTANT: You *must* return the supabaseResponse object as it is.
-    // If you're creating a new Response object with NextResponse.next() make sure to:
-    // 1. Pass the request in it, like so:
-    //    const myNewResponse = NextResponse.next({ request })
-    // 2. Copy over the cookies, like so:
-    //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
-    // 3. Change the myNewResponse object to fit your needs, but avoid changing
-    //    the cookies!
-    // 4. Finally:
-    //    return myNewResponse
-    // If this is not done, you may be causing the browser and server to go out
-    // of sync and terminate the user's session prematurely!
+  // IMPORTANT: You *must* return the supabaseResponse object as it is.
+  // If you're creating a new Response object with NextResponse.next() make sure to:
+  // 1. Pass the request in it, like so:
+  //    const myNewResponse = NextResponse.next({ request })
+  // 2. Copy over the cookies, like so:
+  //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
+  // 3. Change the myNewResponse object to fit your needs, but avoid changing
+  //    the cookies!
+  // 4. Finally:
+  //    return myNewResponse
+  // If this is not done, you may be causing the browser and server to go out
+  // of sync and terminate the user's session prematurely!
 
   const {
     data: { user },
@@ -44,7 +44,7 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isProtectedRoute =
-    pathname.startsWith("/dashboard") || pathname.startsWith("/settings");
+    pathname === "/" || pathname.startsWith("/dashboard") || pathname.startsWith("/settings");
   if (!user && isProtectedRoute) {
     const loginUrl = new URL("/login", request.url);
     const nextTarget = `${pathname}${request.nextUrl.search}`;
@@ -53,7 +53,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && pathname === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return supabaseResponse;
