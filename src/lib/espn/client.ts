@@ -342,6 +342,88 @@ export class EspnClient {
     }
 
     /**
+     * Fetches per-scoring-period actual stats for one or more players.
+     *
+     * Uses kona_playercard which returns the full player profile including
+     * a `player.stats` array. We keep only entries where:
+     *   statSourceId === 0  → actual (not projected)
+     *   statSplitTypeId === 1 → per scoring period (not season totals)
+     *
+     * Each scoring period in NBA fantasy corresponds to a single game day,
+     * so the result is effectively a game log.
+     *
+     * @param playerIds  ESPN player IDs to fetch
+     * @param lastNPeriods  How many most-recent scoring periods to return (default 10)
+     */
+    async getPlayerGameLog(playerIds: number[], lastNPeriods: number = 10) {
+        if (!playerIds.length) return [];
+
+        const url = this.buildLeagueUrl(["kona_playercard"]);
+        const headers = this.getHeaders() as Record<string, string>;
+        headers["x-fantasy-filter"] = JSON.stringify({
+            players: {
+                filterIds: { value: playerIds },
+            },
+        });
+        headers["x-fantasy-platform"] = "espn-fantasy-web";
+        headers["x-fantasy-source"] = "kona";
+
+        console.log(`Fetching Player Game Log for IDs [${playerIds.join(", ")}]: ${url}`);
+
+        const response = await fetch(url, {
+            headers,
+            next: { revalidate: 60 },
+        });
+
+        if (!response.ok) {
+            const text = await response.text().catch(() => "");
+            console.error(
+                `ESPN Player Game Log Error (${response.status}) for [${playerIds.join(", ")}]:`,
+                text.substring(0, 500)
+            );
+            throw new Error(`ESPN Player Game Log Error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const players: unknown[] = Array.isArray(data?.players) ? data.players : [];
+
+        return players.map((entry) => {
+            const e = entry as Record<string, unknown>;
+            const player = (e.player ?? {}) as Record<string, unknown>;
+            const rawStats: unknown[] = Array.isArray(player.stats) ? player.stats : [];
+
+            // Filter to actual per-period entries only, then take the N most recent
+            const periodStats = rawStats
+                .filter((s): s is Record<string, unknown> => {
+                    const stat = s as Record<string, unknown>;
+                    return (
+                        typeof s === "object" &&
+                        s !== null &&
+                        stat.statSourceId === 0 &&
+                        stat.statSplitTypeId === 1
+                    );
+                })
+                .sort((a, b) => {
+                    const aPeriod = typeof a.scoringPeriodId === "number" ? a.scoringPeriodId : 0;
+                    const bPeriod = typeof b.scoringPeriodId === "number" ? b.scoringPeriodId : 0;
+                    return bPeriod - aPeriod; // most recent first
+                })
+                .slice(0, lastNPeriods);
+
+            return {
+                playerId: typeof e.id === "number" ? e.id : null,
+                playerName: (player.fullName as string) || null,
+                proTeamId: typeof player.proTeamId === "number" ? player.proTeamId : null,
+                stats: periodStats.map((s) => ({
+                    scoringPeriodId: s.scoringPeriodId as number,
+                    appliedTotal: typeof s.appliedTotal === "number" ? s.appliedTotal : 0,
+                    stats: (s.stats ?? {}) as Record<string, number>,
+                })),
+            };
+        });
+    }
+
+    /**
      * Batch fetch player info for a list of player IDs.
      * Useful for resolving names when they are missing from roster views.
      */
