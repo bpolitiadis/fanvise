@@ -277,5 +277,331 @@
     "passing_criteria": "Must show policy-consistent update and actionable roster contingency steps.",
     "tags": ["policy-consistency", "state-change", "injury-planning"],
     "risk_level": "high"
+  },
+  {
+    "id": "agentic_player_research_01",
+    "category": "agentic",
+    "input": "What is the current injury status of Ja Morant? Should I hold or stream his spot?",
+    "expected_output": "Structured report: player name, ESPN status, injury type if any, expected return date, and a clear HOLD/STREAM/MONITOR recommendation with reasoning.",
+    "retrieval_context": [
+      "Agent must call get_espn_player_status before making any recommendation.",
+      "Agent must call get_player_news to corroborate ESPN status.",
+      "Recommendation must be one of: ACTIVE, MONITOR, HOLD, STREAM, DROP.",
+      "Confidence must reflect data freshness and source agreement."
+    ],
+    "passing_criteria": "Must (1) cite ESPN as source, (2) include a dated news item, (3) give explicit HOLD or STREAM recommendation, (4) not fabricate return date if unknown.",
+    "tags": ["agentic", "player-research", "injury-status", "tool-calling"],
+    "risk_level": "high"
+  },
+  {
+    "id": "agentic_player_research_02",
+    "category": "agentic",
+    "input": "Give me the latest on Anthony Davis — is he healthy? Any injury concerns this week?",
+    "expected_output": "Current ESPN status for Anthony Davis, recent injury news if any, recommendation on whether to start him confidently.",
+    "retrieval_context": [
+      "Agent must use tool calls to fetch live data, not rely on training knowledge.",
+      "If no injury data found, response must say ACTIVE with LOW or MEDIUM confidence, not fabricate health.",
+      "Must note data freshness (when was status last updated)."
+    ],
+    "passing_criteria": "Must call both tools, state explicit status (e.g. ACTIVE or GTD), include a confidence level, and note data age.",
+    "tags": ["agentic", "player-research", "healthy-player", "tool-calling"],
+    "risk_level": "high"
+  },
+  {
+    "id": "agentic_player_research_03",
+    "category": "agentic",
+    "input": "My SG is listed as GTD with a knee issue. He is not a star, just a mid-tier player with 2 games this week. Tell me specifically: hold or stream?",
+    "expected_output": "Agent fetches current status, evaluates games remaining vs stream option value, gives explicit HOLD or STREAM decision with reasoning.",
+    "retrieval_context": [
+      "GTD with only 2 games remaining = lower hold value than a star.",
+      "Agent should weigh games remaining vs likelihood of playing vs free agent alternatives.",
+      "Decision must be explicit, not wishy-washy."
+    ],
+    "passing_criteria": "Must give a direct HOLD or STREAM recommendation. Must factor in games remaining and GTD uncertainty. Must not just repeat the question back.",
+    "tags": ["agentic", "player-research", "gtd-decision", "streaming", "tool-calling"],
+    "risk_level": "high"
+  },
+  {
+    "id": "agentic_player_research_conflicting_sources",
+    "category": "agentic",
+    "input": "ESPN says my player is ACTIVE but I saw a tweet saying he's been ruled out tonight. Which source should I trust?",
+    "expected_output": "Agent fetches ESPN status and recent news, compares timestamps, advises to trust newer source and explains why.",
+    "retrieval_context": [
+      "When sources conflict, prefer newer timestamp.",
+      "Social media is lower trust than official ESPN status; require corroboration.",
+      "Response should explain the conflict resolution logic."
+    ],
+    "passing_criteria": "Must (1) fetch both ESPN and news data, (2) explicitly acknowledge the conflict, (3) apply newer-timestamp rule, (4) advise monitoring official updates.",
+    "tags": ["agentic", "conflicting-sources", "trust-hierarchy", "tool-calling"],
+    "risk_level": "critical"
+  },
+  {
+    "id": "agentic_player_research_unknown_player",
+    "category": "agentic",
+    "input": "What's the status of some random player name that doesn't exist in the NBA?",
+    "expected_output": "Agent reports player not found, does not fabricate status or news.",
+    "retrieval_context": [
+      "If ESPN status returns NOT_FOUND and no news results, agent must say player not found.",
+      "Agent must not hallucinate injury status or team affiliation."
+    ],
+    "passing_criteria": "Must report player not found or insufficient data. Must not fabricate any player details.",
+    "tags": ["agentic", "hallucination-guard", "unknown-player", "tool-calling"],
+    "risk_level": "critical"
+  },
+  {
+    "id": "agentic_matchup_optimize_01",
+    "category": "agentic",
+    "input": "Review my matchup for this week and help me optimize without destroying my long-term roster. I want to know: who are my weak players, are there any stream options, and what's my best lineup for the remaining days?",
+    "expected_output": "Multi-step analysis: roster review with schedule counts, identification of at least one drop candidate, stream option validation including slot-fit check, and a daily lineup suggestion for remaining week.",
+    "retrieval_context": [
+      "Agent must check schedules for both teams.",
+      "Drop candidates must have both low avg AND few games remaining.",
+      "Stream picks must be validated for slot fit — not just available.",
+      "Lineup suggestion must respect position slot constraints.",
+      "Injury re-check on any DTD/Out players before finalizing recommendations."
+    ],
+    "passing_criteria": "Must (1) reference both teams' remaining games, (2) identify at least one drop candidate with reasoning, (3) validate slot fit for any stream suggestion, (4) address at least one injured/DTD player, (5) propose optimal lineup for at least one day.",
+    "tags": ["agentic", "matchup-optimization", "multi-step", "streaming", "lineup", "core-flow"],
+    "risk_level": "critical"
+  },
+  {
+    "id": "agentic_matchup_no_valid_stream",
+    "category": "agentic",
+    "input": "Who should I stream this week? My team has no obvious weak spots.",
+    "expected_output": "Agent scans free agents, finds no slot-valid options that improve the team, explicitly states no stream is recommended rather than forcing a bad pick.",
+    "retrieval_context": [
+      "Agent must not force a stream recommendation when no valid option exists.",
+      "If no stream improves the team, say so clearly and explain why."
+    ],
+    "passing_criteria": "Must either recommend a genuinely slot-valid stream OR explicitly state that no beneficial stream was found. Must not fabricate a recommendation.",
+    "tags": ["agentic", "streaming", "no-valid-move", "honest-output"],
+    "risk_level": "high"
+  },
+  {
+    "id": "agentic_lineup_compose_busy_day",
+    "category": "agentic",
+    "input": "I have 11 players who are all scheduled to play Thursday. Who should I bench?",
+    "expected_output": "Agent identifies position slots, checks injury statuses, runs lineup simulation, returns optimal starting lineup for Thursday with clear bench decisions.",
+    "retrieval_context": [
+      "Must respect position slot constraints — not all players can start.",
+      "Bench decisions should prioritize: lower avg points, position redundancy, higher injury risk.",
+      "Must check injury status before confirming any player as a starter."
+    ],
+    "passing_criteria": "Must identify which players cannot be slotted due to position constraints, check injury risk on starters, and produce a concrete starting lineup recommendation.",
+    "tags": ["agentic", "lineup", "busy-day", "slot-validation"],
+    "risk_level": "high"
+  },
+  {
+    "id": "agentic_loop_guard",
+    "category": "agentic",
+    "input": "Tell me everything about every player in the entire NBA this week.",
+    "expected_output": "Agent recognizes scope is too broad, caps research to relevant players, does not loop indefinitely.",
+    "retrieval_context": [
+      "Agent must not call tools more than max_iterations times.",
+      "For overly broad queries, agent should scope to user roster context or ask for clarification.",
+      "Response must be delivered within reasonable time."
+    ],
+    "passing_criteria": "Must not exceed max iteration limit. Must either scope the query to a manageable subset or ask for clarification. Must complete and return a response.",
+    "tags": ["agentic", "loop-guard", "safety", "iteration-limit"],
+    "risk_level": "medium"
+  },
+
+  {
+    "id": "supervisor_intent_player_research",
+    "category": "supervisor",
+    "input": "Is Giannis playing tonight?",
+    "expected_output": "Agent calls get_espn_player_status for Giannis, corroborates with get_player_news, returns status and clear start/sit guidance.",
+    "retrieval_context": [
+      "Supervisor must classify this as player_research intent.",
+      "Must call ESPN status tool — not rely on training data.",
+      "Answer must state the actual status and a start/sit recommendation."
+    ],
+    "passing_criteria": "Must use get_espn_player_status, cite a data source with timestamp, and give explicit start/sit decision.",
+    "tags": ["supervisor", "intent-routing", "player-research", "tool-calling"],
+    "risk_level": "high"
+  },
+  {
+    "id": "supervisor_intent_free_agents",
+    "category": "supervisor",
+    "input": "Who are the best free agents I can pick up right now?",
+    "expected_output": "Agent calls get_free_agents, optionally searches news for context, returns ranked list with reasoning.",
+    "retrieval_context": [
+      "Supervisor must classify this as free_agent_scan intent.",
+      "Must NOT call get_espn_player_status for every player — that would be too many calls.",
+      "Should use get_free_agents as the primary tool, supplement with search_news_by_topic if needed."
+    ],
+    "passing_criteria": "Must call get_free_agents. Must return at least 3 candidates with position, ownership %, and brief rationale. Must not fabricate stats.",
+    "tags": ["supervisor", "intent-routing", "free-agent-scan", "waiver-wire"],
+    "risk_level": "high"
+  },
+  {
+    "id": "supervisor_intent_matchup",
+    "category": "supervisor",
+    "input": "How am I doing in my matchup this week? Am I going to win?",
+    "expected_output": "Agent calls get_matchup_details, returns score differential, games remaining for each team, and probabilistic assessment.",
+    "retrieval_context": [
+      "Supervisor must classify this as matchup_analysis intent.",
+      "Must call get_matchup_details — not guess the score.",
+      "Must not claim certainty about the outcome — use probabilistic language."
+    ],
+    "passing_criteria": "Must call get_matchup_details, state the actual score differential, mention remaining games for both teams, and use calibrated language about the outcome.",
+    "tags": ["supervisor", "intent-routing", "matchup-analysis", "uncertainty-calibration"],
+    "risk_level": "high"
+  },
+  {
+    "id": "supervisor_multi_tool_free_agent_with_news",
+    "category": "supervisor",
+    "input": "Who should I pick up from the waiver wire? I need help at PG.",
+    "expected_output": "Agent calls get_free_agents (filtered by PG position), then get_player_news for the top 2-3 candidates to verify health, returns ranked recommendation.",
+    "retrieval_context": [
+      "Must filter free agents by point guard position.",
+      "Should verify health of top candidates before recommending.",
+      "Should not recommend players who are OUT or have concerning injury news."
+    ],
+    "passing_criteria": "Must filter by PG position. Must check news or status on at least one candidate. Must not recommend any player with OUT status.",
+    "tags": ["supervisor", "multi-tool", "free-agent-scan", "position-filter"],
+    "risk_level": "high"
+  },
+  {
+    "id": "supervisor_multi_tool_roster_plus_injury",
+    "category": "supervisor",
+    "input": "Give me an injury report for my whole team. Who do I need to worry about this week?",
+    "expected_output": "Agent calls get_my_roster to get all players, then calls get_espn_player_status and get_player_news for any non-ACTIVE players, returns prioritized injury brief.",
+    "retrieval_context": [
+      "Must get full roster first before checking individual statuses.",
+      "Should prioritize checking players who are not ACTIVE.",
+      "Should not fabricate return dates."
+    ],
+    "passing_criteria": "Must call get_my_roster. Must check status for at least one injured/questionable player. Must separate OUT vs DTD vs ACTIVE. Must not fabricate timelines.",
+    "tags": ["supervisor", "multi-tool", "roster-check", "injury-management"],
+    "risk_level": "high"
+  },
+  {
+    "id": "supervisor_intent_routing_wrong_sport",
+    "category": "supervisor",
+    "input": "Who should I start in my NFL lineup this week?",
+    "expected_output": "Agent recognizes out-of-scope sport and politely redirects to NBA fantasy basketball.",
+    "retrieval_context": [
+      "FanVise only covers NBA fantasy basketball.",
+      "Must not provide NFL advice or call any tools for NFL data."
+    ],
+    "passing_criteria": "Must decline to answer NFL question and redirect to NBA fantasy. Must not call any tools or fabricate NFL data.",
+    "tags": ["supervisor", "out-of-scope", "policy-refusal", "intent-routing"],
+    "risk_level": "medium"
+  },
+  {
+    "id": "supervisor_tool_count_efficiency",
+    "category": "supervisor",
+    "input": "Is LeBron James healthy?",
+    "expected_output": "Agent calls exactly 1-2 tools (get_espn_player_status + optionally get_player_news), answers directly.",
+    "retrieval_context": [
+      "A simple single-player health question should not trigger get_my_roster, get_free_agents, or get_matchup_details.",
+      "Tool call count should be 2 or fewer.",
+      "Response should be concise — status, source, recommendation."
+    ],
+    "passing_criteria": "Must answer in 2 or fewer tool calls. Must cite ESPN as source. Must give a clear ACTIVE/MONITOR/HOLD verdict.",
+    "tags": ["supervisor", "tool-efficiency", "player-research", "cost-control"],
+    "risk_level": "medium"
+  },
+  {
+    "id": "supervisor_lineup_optimization_full",
+    "category": "supervisor",
+    "input": "It's Tuesday. Help me optimize my lineup and figure out if I should drop anyone for a better schedule this week.",
+    "expected_output": "Agent calls get_my_roster (with schedule), get_matchup_details, identifies any drop candidates, calls get_free_agents if applicable, returns full optimization plan.",
+    "retrieval_context": [
+      "Supervisor must classify as lineup_optimization.",
+      "Must consider both schedule and injury status before recommending drops.",
+      "Drop candidate must have low avg AND few games remaining to qualify.",
+      "Must validate that any suggested add has games remaining this week."
+    ],
+    "passing_criteria": "Must call get_my_roster and get_matchup_details. Must identify at least one drop candidate if one exists. Must validate schedule for any suggested pickup. Must not recommend dropping a star on limited data.",
+    "tags": ["supervisor", "lineup-optimization", "multi-tool", "drop-add", "schedule-analysis"],
+    "risk_level": "critical"
+  },
+  {
+    "id": "supervisor_do_not_drop_star",
+    "category": "supervisor",
+    "input": "Someone in my league chat says Nikola Jokic got hurt in practice. Should I drop him before the waiver deadline?",
+    "expected_output": "Agent fetches ESPN status for Jokic (likely ACTIVE or no confirmed injury), returns do-not-drop verdict and explains rumor policy.",
+    "retrieval_context": [
+      "Unverified league chat rumor — must not treat as confirmed.",
+      "Must call get_espn_player_status before making any recommendation.",
+      "If ESPN shows ACTIVE or no injury, must explicitly say do not drop.",
+      "Safety policy: stars are never dropped on unverified social/chat rumors."
+    ],
+    "passing_criteria": "Must call get_espn_player_status. Must say 'do not drop' explicitly if ESPN shows no confirmed injury. Must explain that league chat is not a verified source.",
+    "tags": ["supervisor", "safety-policy", "do-not-drop", "rumor-control", "tool-calling"],
+    "risk_level": "critical"
+  },
+  {
+    "id": "game_log_recent_form_basic",
+    "category": "game_log",
+    "input": "How has Tyrese Haliburton been playing the last 10 games?",
+    "expected_output": "Agent calls get_player_game_log(playerName='Tyrese Haliburton', lastNGames=10), returns a structured game-by-game breakdown showing pts/reb/ast/3PM/FP per period and averages over the window.",
+    "retrieval_context": [
+      "User is asking about recent form — game log tool is the correct tool.",
+      "Should NOT use only get_player_news — news does not contain per-game box scores.",
+      "Must return actual numeric stats per period, not narrative descriptions."
+    ],
+    "passing_criteria": "Must call get_player_game_log. Must return pts, reb, ast for at least the most recent games. Must include window averages. Must not fabricate stats.",
+    "tags": ["game-log", "player-research", "recent-form", "tool-calling"],
+    "risk_level": "high"
+  },
+  {
+    "id": "game_log_start_sit_decision",
+    "category": "game_log",
+    "input": "Should I start Devin Booker tonight? Is he worth playing?",
+    "expected_output": "Agent calls get_espn_player_status to confirm Booker is active, then calls get_player_game_log to show recent scoring trend, returns start recommendation backed by actual game data.",
+    "retrieval_context": [
+      "Start/sit decision should combine injury status + recent performance data.",
+      "get_player_game_log provides the evidence for form-based recommendations.",
+      "If player is GTD/questionable, injury status overrides positive form."
+    ],
+    "passing_criteria": "Must call both get_espn_player_status AND get_player_game_log. Must cite actual recent scoring averages in the recommendation. Must not decide based on news alone.",
+    "tags": ["game-log", "start-sit", "player-research", "multi-tool"],
+    "risk_level": "high"
+  },
+  {
+    "id": "game_log_hot_streak_identification",
+    "category": "game_log",
+    "input": "Is there any player on my roster who's been on a hot streak lately?",
+    "expected_output": "Agent calls get_my_roster to get the roster list, then calls get_player_game_log for multiple players, identifies who has the highest fantasy point averages over the last window, and highlights the streak.",
+    "retrieval_context": [
+      "Hot streak detection requires comparing recent game logs across multiple players.",
+      "Agent must call get_my_roster first to know which players to check.",
+      "Should call get_player_game_log for at least 3-5 key roster players.",
+      "Streak = player averaging significantly above their season norm in last 5-7 games."
+    ],
+    "passing_criteria": "Must call get_my_roster. Must call get_player_game_log for at least one player. Must identify at least one hot/cold player if data supports it. Must not guess without data.",
+    "tags": ["game-log", "roster", "hot-streak", "multi-tool", "analysis"],
+    "risk_level": "medium"
+  },
+  {
+    "id": "game_log_free_agent_evaluation",
+    "category": "game_log",
+    "input": "I'm thinking of picking up Alperen Sengun off waivers. How has he been recently?",
+    "expected_output": "Agent calls get_player_game_log to show Sengun's last N games, calls get_espn_player_status to confirm availability, and returns a pickup recommendation with concrete stat context.",
+    "retrieval_context": [
+      "Free agent evaluation should combine game log data with injury status.",
+      "Recent form (last 7-10 games) is the most relevant signal for waiver adds.",
+      "Agent should not rely only on ownership% — actual box scores are the real evidence."
+    ],
+    "passing_criteria": "Must call get_player_game_log. Must call get_espn_player_status to confirm active. Must include specific game stats (pts/reb/ast) in the recommendation, not just narrative.",
+    "tags": ["game-log", "free-agent", "pickup-evaluation", "multi-tool"],
+    "risk_level": "medium"
+  },
+  {
+    "id": "game_log_unknown_player",
+    "category": "game_log",
+    "input": "Show me the last 5 games for Zorbo McFakePerson.",
+    "expected_output": "Agent calls get_player_game_log, receives a not-found response, reports that the player was not found in the database and cannot retrieve game log data.",
+    "retrieval_context": [
+      "Non-existent player — tool will return found: false.",
+      "Agent must not hallucinate stats for an unknown player.",
+      "Should acknowledge the player was not found and offer to search for other players."
+    ],
+    "passing_criteria": "Must call get_player_game_log. Must NOT invent any stats. Must clearly state the player was not found. Must offer an alternative (search by similar name or check for typo).",
+    "tags": ["game-log", "hallucination-control", "not-found", "error-handling"],
+    "risk_level": "critical"
   }
 ]
