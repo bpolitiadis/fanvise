@@ -9,7 +9,7 @@ FanVise is a strategic intelligence platform for ESPN Fantasy Basketball (H2H Po
 FanVise leverages a unique **Environment-Adaptive RAG** architecture, allowing you to choose your intelligence provider:
 
 *   **Cloud Mode (Google Gemini 2.0)**: High-reasoning, low-latency performance for complex strategic analysis.
-*   **Local Mode (Ollama)**: Privacy-focused, offline-capable inference using models like **DeepSeek R1** or **Llama 3**, running entirely on your local machine.
+*   **Local Mode (Ollama)**: Privacy-focused, offline-capable inference using models like **Llama 3.1** (recommended; supports agent tool-calling), running entirely on your local machine.
 
 ## 🚀 Getting Started
 

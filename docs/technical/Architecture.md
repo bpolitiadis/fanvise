@@ -20,7 +20,7 @@ graph TD
     
     subgraph "Intelligence Providers"
         Orchestrator --> Gemini[Google Gemini 2.0 Flash]
-        Orchestrator -.-> Ollama[Local: DeepSeek / Llama]
+        Orchestrator -.-> Ollama[Local: Llama 3.1 / Ollama]
     end
     
     subgraph "Data & Persistence"

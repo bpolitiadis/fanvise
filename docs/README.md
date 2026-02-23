@@ -22,6 +22,9 @@ Deep dives into the system architecture and implementation details.
 *   **[UI & Branding](./technical/UI_and_Branding.md)**: Design system, components, and theming.
 
 ### Agents & Intelligence
+*   **[Agentic Architecture — LangGraph](./technical/Agentic_Architecture_LangGraph.md)**: *(Adopted Feb 2026)* Full implementation plan, reasoning, tool definitions, cost model, and 5-step roadmap for LangGraph-based agents.
+*   **[Player Research Agent](./technical/Player_Research_Agent.md)**: Step 1 agent — live ESPN status + news synthesis for any NBA player.
+*   **[Lineup Optimization Flow](./technical/Lineup_Optimization_Flow.md)**: End-to-end spec for the matchup optimizer, including LangGraph graph design.
 *   **[API & Agents](./technical/API_and_Agents.md)**: How the AI service interacts with the application.
 *   **[System Prompts](./technical/System_Prompts.md)**: The prompt engineering behind the "FanVise Strategist" persona.
 *   **[Rate Limiting Strategy](./technical/rate-limiting-ai-strategy.md)**: Strategies for managing LLM API costs and limits.

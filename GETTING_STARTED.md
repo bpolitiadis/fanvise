@@ -68,7 +68,7 @@ Before you begin, ensure you have the following installed on your machine:
     # Set to 'true' to use local Ollama models instead of Gemini
     USE_LOCAL_AI=false
     OLLAMA_URL=http://localhost:11434/api/chat
-    OLLAMA_MODEL=deepseek-r1:14b
+    OLLAMA_MODEL=llama3.1
     OLLAMA_EMBEDDING_MODEL=nomic-embed-text
     
     # --- Logging ---
@@ -113,8 +113,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 If you enabled `USE_LOCAL_AI=true`, ensure Ollama is running and has the required models pulled:
 
 ```bash
-# Pull the chat model
-ollama pull deepseek-r1:14b
+# Pull the chat model (must support tool-calling for agent mode)
+ollama pull llama3.1
 
 # Pull the embedding model
 ollama pull nomic-embed-text
@@ -128,3 +128,4 @@ ollama serve
 *   **Supabase Connection Issues**: Ensure Docker is running. Try `supabase stop` followed by `supabase start` if issues persist.
 *   **ESPN Login Failed**: Your `ESPN_S2` and `SWID` cookies expire periodically (approx. every 14 days or on logout). You may need to refresh them from your browser cookies on espn.com.
 *   **Ollama Not Responding**: Ensure `OLLAMA_URL` is reachable and CORS is configured if running across different networks (default localhost is usually fine).
+*   **"does not support tools" error**: The agent chat requires a model that supports tool-calling (e.g. `llama3.1`, `mistral`, `qwen2.5`). Set `OLLAMA_MODEL=llama3.1` in `.env.local` and run `ollama pull llama3.1`.

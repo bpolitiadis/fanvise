@@ -94,21 +94,20 @@ It should present:
 
 ## System Design Guidance
 
-### Do we need LangChain now?
+### Do we need LangGraph?
 
-No. This flow does not require LangChain for v1.
+**Yes — adopted Feb 23, 2026.** See `docs/technical/Agentic_Architecture_LangGraph.md` for the full rationale and implementation plan.
 
-Recommended v1 architecture:
-- Next.js API route as controller.
-- Tool/function-calling for data fetches.
-- Deterministic optimizer module for scoring/simulation.
-- LLM for orchestration, narration, and clarification.
+The original "No for v1" position assumed a simple "suggest top 3 adds" flow. The full matchup optimization scenario — checking both rosters, schedule analysis, identifying drop candidates, scanning free agents, validating slot fit, re-evaluating injuries, composing daily lineups — is a multi-step stateful workflow that a single system prompt cannot faithfully simulate.
 
-When LangGraph (or LangChain) becomes useful:
-- Multi-step workflows with branching/retries/human checkpoints.
-- Durable agent state across long sessions.
-- Complex multi-agent coordination.
-- Standardized tracing/evaluation needs at higher scale.
+**Adopted architecture:**
+- `@langchain/langgraph` `StateGraph` for multi-step workflow orchestration.
+- Deterministic `OptimizerService` for all math (point-delta simulation, slot legality) — no LLM for core calculations.
+- Existing services (`EspnClient`, `searchNews`, `buildIntelligenceSnapshot`) wrapped as LangGraph tools.
+- Human-in-the-loop confirmation gate before presenting final recommendations.
+- Legacy single-pass chat (`IntelligenceService`) preserved for simple Q&A.
+
+**What we do NOT adopt:** classic LangChain chain abstractions (`LLMChain`, `VectorstoreRetriever`, `Memory`). Only LangGraph is used.
 
 ## Proposed Service Contracts
 
@@ -156,12 +155,15 @@ Example internal service boundaries:
 - Add deterministic assertion checks (no impossible slot suggestions).
 - Track recommendation quality over time.
 
-### Phase 5: Optional LangGraph Upgrade
+### Phase 5: LangGraph Matchup Optimizer Graph
 
-Adopt only after workflow complexity justifies it:
-- Transaction-aware multi-step plans.
-- Long-lived agent memory/state.
-- Advanced branching and recovery policies.
+LangGraph adopted Feb 23, 2026. This phase is now the implementation target.
+See `docs/technical/Agentic_Architecture_LangGraph.md` §5 for the full roadmap and §6 for the graph node design.
+
+- 8-node `StateGraph`: parse_intent → gather_rosters → analyze_schedule → check_injuries → identify_candidates → validate_moves → compose_lineup → present_and_confirm.
+- Human interrupt/resume at the confirmation gate.
+- Streaming partial results to UI during execution.
+- Full evaluation suite in `fanvise_eval/golden_dataset.json` (category: `agentic`).
 
 ## Acceptance Criteria (v1)
 

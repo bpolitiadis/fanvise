@@ -14,9 +14,16 @@ Used for production and high-scale intelligence extraction.
 
 ### 2. Ollama (Local)
 Used for local development or private deployments.
-- **Core Model**: `deepseek-r1:14b` (Recommended) or `llama3`.
+- **Core Model**: `llama3.1` (Recommended). Must support tool/function calling for agent mode; `deepseek-r1:14b` does not.
 - **Embedding Model**: `nomic-embed-text`.
 - **Key Features**: Zero-cost inference, local data privacy.
+
+#### Agent Mode: Ollama vs Gemini
+
+Local models (Ollama) can occasionally hallucinate roster/matchup data (e.g. inventing NBA team names instead of fantasy teams, or NBA game scores instead of fantasy points). If you see wrong roster players or "Memphis Grizzlies 90–103" style scores:
+
+1. **Retry** — The anti-hallucination prompt rules often correct it on a second attempt.
+2. **Switch to Gemini** — Set `USE_LOCAL_AI=false` in `.env.local`. Gemini follows tool data more reliably for agent audits. Requires `GOOGLE_API_KEY`.
 
 ---
 
@@ -53,7 +60,7 @@ Create a `.env.local` file with the following variables to configure the intelli
 | `GOOGLE_API_KEY` | API Key for Vertex AI / Gemini. | *Required for Cloud* |
 | `USE_LOCAL_AI` | Set to `true` to use Ollama instead of Gemini. | `false` |
 | `GEMINI_MODEL` | The specific Gemini variety to use. | `gemini-2.0-flash` |
-| `OLLAMA_MODEL` | The local model name in Ollama. | `deepseek-r1:14b` |
+| `OLLAMA_MODEL` | The local model name in Ollama. Must support tool-calling for agent mode (e.g. `llama3.1`, `mistral`, `qwen2.5`). | `llama3.1` |
 
 ### RAG & Embedding Settings
 | Variable | Description | Default |

@@ -48,7 +48,7 @@ By leveraging an **Environment-Adaptive RAG** architecture, FanVise merges **Pri
 *   **Cognitive Layer (The Brain):**
     *   **Orchestrator:** Custom `AI Service` that routes between local and cloud providers.
     *   **Cloud LLM:** Google Gemini 2.0 Flash (Low latency, high context).
-    *   **Local LLM:** Ollama (DeepSeek R1 / Llama 3) for privacy-focused or offline-capable inference.
+    *   **Local LLM:** Ollama (Llama 3.1 recommended; supports agent tool-calling) for privacy-focused or offline-capable inference.
 *   **Data Ingestion:**
     *   **Private:** ESPN API Client (Direct integration via `ESPN_S2` cookies).
     *   **Public:** RSS Polling Service (Rotowire, ESPN, CBS).

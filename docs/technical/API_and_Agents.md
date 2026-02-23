@@ -6,7 +6,7 @@ The intelligence of FanVise is powered by a centralized **AI Service** and a ded
 
 The central gateway for all model interactions. It provides a provider-agnostic interface for:
 - **Streaming Responses**: Optimized for real-time chat interactions.
-- **Provider Switching**: Seamlessly toggles between **Google Gemini** (Cloud) and **Ollama** (Local/DeepSeek) based on environment configuration.
+- **Provider Switching**: Seamlessly toggles between **Google Gemini** (Cloud) and **Ollama** (Local, e.g. Llama 3.1) based on environment configuration.
 - **Task Specialization**: Dedicated handlers for text embeddings (`nomic-embed` or `gemini-embedding-001`) and structured intelligence extraction.
 
 ## Prompt Engine (`prompts/index.ts`)
