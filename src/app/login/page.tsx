@@ -29,6 +29,9 @@ const GoogleIcon = () => (
 
 import { Suspense } from "react";
 
+import { EmailAuthForm } from "@/components/auth/email-auth-form";
+import { DevLoginButton } from "@/components/auth/dev-login-button";
+
 function LoginContent() {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -58,46 +61,57 @@ function LoginContent() {
   };
 
   return (
-    <section className="w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-sm">
-      <div className="mb-6 space-y-2 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome to FanVise</h1>
-        <p className="text-sm text-muted-foreground">
-          Sign in with Google to launch your real-time fantasy intelligence cockpit.
-        </p>
+    <section className="w-full max-w-md space-y-6">
+      <div className="rounded-xl border border-border bg-card p-8 shadow-sm">
+        <div className="mb-6 space-y-2 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">Welcome to FanVise</h1>
+          <p className="text-sm text-muted-foreground">
+            Sign in to launch your real-time fantasy intelligence cockpit.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 w-full gap-2 bg-background hover:bg-accent"
+            onClick={startGoogleSignIn}
+            disabled={isRedirecting}
+          >
+            {isRedirecting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Redirecting...
+              </>
+            ) : (
+              <>
+                <GoogleIcon />
+                Sign in with Google
+              </>
+            )}
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+            </div>
+          </div>
+
+          <EmailAuthForm />
+        </div>
+
+        {(searchParams.get("error") || errorMessage) && (
+          <p className="mt-4 text-center text-sm text-destructive">
+            {errorMessage ??
+              "Authentication failed. Please try again or check your Supabase redirect URLs."}
+          </p>
+        )}
       </div>
 
-      <Button
-        type="button"
-        className="h-11 w-full gap-2"
-        onClick={startGoogleSignIn}
-        disabled={isRedirecting}
-      >
-        {isRedirecting ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Redirecting to Google...
-          </>
-        ) : (
-          <>
-            <GoogleIcon />
-            Sign in with Google
-          </>
-        )}
-      </Button>
-
-      {isRedirecting ? (
-        <div className="mt-4 space-y-2" aria-live="polite" aria-busy="true">
-          <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
-          <div className="h-3 w-full animate-pulse rounded bg-muted" />
-        </div>
-      ) : null}
-
-      {(searchParams.get("error") || errorMessage) && (
-        <p className="mt-4 text-sm text-destructive">
-          {errorMessage ??
-            "Authentication failed. Please try again or check your Supabase redirect URLs."}
-        </p>
-      )}
+      <DevLoginButton />
     </section>
   );
 }
