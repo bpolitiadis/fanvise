@@ -1,9 +1,20 @@
 /**
- * FanVise Prompt Engine
- * 
- * Centralized prompt management for AI agents.
- * This module provides a clean API for generating context-aware system prompts.
- * 
+ * FanVise Prompt Engine — Classic Chat Mode
+ *
+ * Generates context-rich system prompts for the CLASSIC (single-shot RAG) chat
+ * pipeline used by /api/chat.  All league data (roster, matchup, free agents,
+ * scoring settings, news) is injected upfront into a single large system prompt.
+ *
+ * ─── ARCHITECTURAL SEPARATION ────────────────────────────────────────────────
+ * This module is ONLY used by the classic chat mode (/api/chat).
+ *
+ * The AGENTIC mode (/api/agent/chat) lives in src/agents/ and uses a completely
+ * different pattern: a short tool-calling instruction prompt + a ReAct loop that
+ * fetches data on demand via LangGraph tools.  Do NOT conflate the two:
+ *
+ *   prompts/            → Classic RAG: inject everything → single LLM call
+ *   src/agents/         → Agentic ReAct: tool loop → synthesize answer
+ *
  * @module prompts
  */
 
