@@ -12,12 +12,16 @@ import {
 import type { ChatMessage, ChatLanguage } from '@/types/ai';
 export type { ChatMessage, ChatLanguage };
 
+export type ChatMode = "classic" | "agent";
+
 export interface Conversation {
   id: string;
   title: string;
   lastMessageAt: string;
   activeTeamId: string | null;
   language: ChatLanguage;
+  /** "classic" = single-pass RAG (/api/chat), "agent" = Supervisor (/api/agent/chat) */
+  mode: ChatMode;
   messages: ChatMessage[];
 }
 
@@ -27,12 +31,13 @@ interface ChatHistoryContextValue {
   activeConversation: Conversation | null;
   setActiveConversation: (conversationId: string) => void;
   setConversationLanguage: (conversationId: string, language: ChatLanguage) => void;
+  setConversationMode: (conversationId: string, mode: ChatMode) => void;
   deleteConversation: (conversationId: string) => void;
   upsertConversation: (
     conversationId: string,
     updater: (conversation: Conversation) => Conversation
   ) => void;
-  createConversation: (activeTeamId: string | null, language: ChatLanguage) => string;
+  createConversation: (activeTeamId: string | null, language: ChatLanguage, mode?: ChatMode) => string;
 }
 
 const STORAGE_KEY = "fanvise_chat_history_v1";
@@ -51,7 +56,8 @@ const normalizeTitle = (messages: ChatMessage[]) => {
 
 const createConversationDraft = (
   activeTeamId: string | null,
-  language: ChatLanguage
+  language: ChatLanguage,
+  mode: ChatMode = "classic"
 ): Conversation => {
   const now = new Date().toISOString();
   return {
@@ -60,6 +66,7 @@ const createConversationDraft = (
     lastMessageAt: now,
     activeTeamId,
     language,
+    mode,
     messages: [],
   };
 };
@@ -108,8 +115,8 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createConversation = useCallback(
-    (activeTeamId: string | null, language: ChatLanguage) => {
-      const conversation = createConversationDraft(activeTeamId, language);
+    (activeTeamId: string | null, language: ChatLanguage, mode: ChatMode = "classic") => {
+      const conversation = createConversationDraft(activeTeamId, language, mode);
       setConversations((prev) => [conversation, ...prev]);
       setActiveConversationId(conversation.id);
       return conversation.id;
@@ -149,6 +156,13 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     [upsertConversation]
   );
 
+  const setConversationMode = useCallback(
+    (conversationId: string, mode: ChatMode) => {
+      upsertConversation(conversationId, (conversation) => ({ ...conversation, mode }));
+    },
+    [upsertConversation]
+  );
+
   const deleteConversation = useCallback((conversationId: string) => {
     setConversations((prev) => {
       const remaining = prev.filter((conversation) => conversation.id !== conversationId);
@@ -170,6 +184,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         activeConversation,
         setActiveConversation,
         setConversationLanguage,
+        setConversationMode,
         deleteConversation,
         upsertConversation,
         createConversation,

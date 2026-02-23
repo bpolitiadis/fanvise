@@ -26,7 +26,7 @@ const STREAM_HEARTBEAT_TOKEN = "[[FV_STREAM_READY]]";
 const IS_LOCAL_AI = process.env.USE_LOCAL_AI === "true" && process.env.VERCEL !== "1" && !process.env.VERCEL_ENV;
 const ACTIVE_AI_PROVIDER = IS_LOCAL_AI ? "ollama" : "gemini";
 const ACTIVE_AI_MODEL = IS_LOCAL_AI
-    ? process.env.OLLAMA_MODEL || "deepseek-r1:14b"
+    ? process.env.OLLAMA_MODEL || "llama3.1"
     : process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
 const isRateLimitError = (error: unknown) => {

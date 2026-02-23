@@ -18,6 +18,7 @@ import {
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
+  FlaskConical,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -142,7 +143,7 @@ export function Sidebar({
 
       {/* Team Switcher Header */}
       <div className="p-3 border-b">
-         <DropdownMenu>
+        <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -352,12 +353,38 @@ export function Sidebar({
           <div className={cn("flex flex-col gap-1", collapsed && "hidden")}>
               <Button
                 variant="ghost"
+                asChild
+                className="h-9 w-full justify-start gap-3 px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Link href="/settings" onClick={onNavigate}>
+                  <Settings className="h-4 w-4 opacity-70" />
+                  Settings
+                </Link>
+              </Button>
+              <Button
+                variant="ghost"
                 className="h-9 w-full justify-start gap-3 px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                   <HelpCircle className="h-4 w-4 opacity-70" />
                   Support
               </Button>
           </div>
+          {process.env.NODE_ENV === "development" && (
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-lg border border-dashed border-yellow-500/40 bg-yellow-500/10 px-2 py-1.5",
+                collapsed && "justify-center px-1"
+              )}
+            >
+              <FlaskConical className="h-3.5 w-3.5 shrink-0 text-yellow-500" />
+              {!collapsed && (
+                <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-yellow-500/90">
+                  Dev · test@example.com
+                </span>
+              )}
+            </div>
+          )}
+
           <div className={cn("flex items-center gap-3 px-2", collapsed && "justify-center px-0")}>
              <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.6)]" />
              {!collapsed && (

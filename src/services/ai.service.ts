@@ -38,7 +38,7 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 const USE_LOCAL_AI = process.env.USE_LOCAL_AI === 'true';
 
 /** Ollama model name */
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'deepseek-r1:14b';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.1';
 
 /** Ollama API endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
@@ -418,7 +418,7 @@ class GeminiIntelligenceProvider implements IntelligenceProvider {
 class OllamaIntelligenceProvider implements IntelligenceProvider {
     private model: string;
 
-    constructor(model: string = OLLAMA_MODEL || 'deepseek-r1:14b') {
+    constructor(model: string = OLLAMA_MODEL || 'llama3.1') {
         this.model = model;
     }
 
