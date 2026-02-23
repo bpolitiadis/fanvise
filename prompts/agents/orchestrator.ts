@@ -54,7 +54,7 @@ function formatRoster(roster?: PlayerContext[]): string {
 
     return roster
         .map(p => {
-            const statusIndicator = p.isInjured ? ` [${p.injuryStatus}]` : '';
+            const statusIndicator = ((p.injuryStatus && p.injuryStatus !== 'ACTIVE') || p.isInjured) ? ` [${p.injuryStatus || 'INJURED'}]` : '';
             const performance = (p.avgPoints !== undefined && p.gamesPlayed !== undefined)
                 ? ` [AVG: ${p.avgPoints.toFixed(1)}, GP: ${p.gamesPlayed}]`
                 : '';
@@ -90,7 +90,7 @@ function formatFreeAgents(players?: PlayerContext[]): string {
     return players.slice(0, 20).map(p => {
         const ownership = p.ownership?.percentOwned ? ` (Own: ${p.ownership.percentOwned.toFixed(1)}%)` : '';
         const stats = (p.avgPoints !== undefined) ? ` [AVG: ${p.avgPoints.toFixed(1)}]` : '';
-        const status = p.isInjured ? ` [${p.injuryStatus}]` : '';
+        const status = ((p.injuryStatus && p.injuryStatus !== 'ACTIVE') || p.isInjured) ? ` [${p.injuryStatus || 'INJURED'}]` : '';
         const outlook = p.seasonOutlook ? `\n  - Outlook: ${p.seasonOutlook.substring(0, 80)}...` : '';
         return `- ${p.fullName} (${p.position})${ownership}${stats}${status}${outlook}`;
     }).join('\n');
@@ -124,7 +124,7 @@ You are the **FanVise Strategist**, a data-obsessed NBA fanatic and the user's t
 5. **DETERMINISTIC STATUS CONTRACT**:
     * For any injury/availability claim, require this evidence tuple from context: (player, status, timestamp, source).
     * If any tuple field is missing, say exactly: "Insufficient verified status data."
-    * Allowed status labels are: OUT, GTD, Day-to-Day, Questionable, Available, OFS.
+    * Allowed status labels are: OUT, O, DTD, GTD, Day-to-Day, Questionable, Available, OFS, SSPD (Suspended).
 6. **CONFLICT RESOLUTION**:
     * If two items conflict, prefer the newest timestamp.
     * If timestamps are tied, prefer higher trust source.
@@ -132,7 +132,7 @@ You are the **FanVise Strategist**, a data-obsessed NBA fanatic and the user's t
 7. **LINK MANDATE**: For every claim regarding news or player status, append source URL when available in context.
 8. **STREAMING RULES**:
     *   **NEVER recommend a player already listed in 'My Roster' or 'Opponent Roster'.**
-    *   **NEVER recommend a player listed as 'OUT' or 'Injured' for streaming purposes.**
+    *   **NEVER recommend a player listed as 'OUT', 'Injured', or 'SSPD' (Suspended) for streaming purposes.**
     *   **ONLY recommend players listed in 'Top Available Free Agents' section.**
     *   If the 'Top Available Free Agents' section is empty or contains no suitable players, state: "No validated streaming options available at this time."
 
@@ -219,12 +219,15 @@ const ORCHESTRATOR_EL = (ctx: PromptContext): string => `
 5. **DETERMINISTIC STATUS CONTRACT**:
     * Για κάθε ισχυρισμό τραυματισμού/διαθεσιμότητας, απαίτησε tuple τεκμηρίωσης: (player, status, timestamp, source).
     * Αν λείπει οποιοδήποτε πεδίο, πες ακριβώς: "Insufficient verified status data."
-    * Επιτρεπόμενα status labels: OUT, GTD, Day-to-Day, Questionable, Available, OFS.
+    * Επιτρεπόμενα status labels: OUT, O, DTD, GTD, Day-to-Day, Questionable, Available, OFS, SSPD (Suspended).
 6. **CONFLICT RESOLUTION**:
     * Αν δύο πηγές συγκρούονται, προτίμησε την πιο πρόσφατη χρονική σήμανση.
     * Αν η χρονική σήμανση είναι ίδια, προτίμησε την πηγή με υψηλότερο trust.
     * Μην συγχωνεύεις αντικρουόμενα status σε ένα συμπέρασμα.
 7. **LINK MANDATE**: Για κάθε ισχυρισμό σχετικά με ειδήσεις ή κατάσταση παίκτη, επισύναψε source URL όταν υπάρχει στο context.
+8. **STREAMING RULES**:
+    *   ΜΗΝ προτείνεις παίκτη που είναι ήδη στο roster σου ή του αντιπάλου.
+    *   ΜΗΝ προτείνεις παίκτη με status 'OUT', 'Injured', ή 'SSPD' (Suspended) για streaming.
 
 # ΠΛΑΙΣΙΟ ΑΠΑΝΤΗΣΗΣ
 - **Persona**: "Data-Freak Friend" (Φιλικός, ανταγωνιστικός, stat-obsessed).

@@ -48,11 +48,11 @@ interface PlayerStatusItem {
     source: string | null;
 }
 
-const INJURY_QUERY_TERMS = ['injury', 'injuries', 'gtd', 'dtd', 'questionable', 'out', 'doubtful', 'ofs', 'available', 'availability', 'day-to-day'];
+const INJURY_QUERY_TERMS = ['injury', 'injuries', 'gtd', 'dtd', 'questionable', 'out', 'doubtful', 'ofs', 'availability', 'day-to-day', 'sspd', 'suspended'];
 const PLAYER_QUERY_NOISE = new Set([
     'nba', 'fantasy', 'basketball', 'news', 'latest', 'update', 'updates', 'report', 'reports',
     'status', 'timeline', 'return', 'returns', 'injury', 'injuries', 'availability', 'available',
-    'questionable', 'doubtful', 'out', 'gtd', 'dtd', 'ofs', 'drop', 'hold', 'start', 'sit'
+    'questionable', 'doubtful', 'out', 'gtd', 'dtd', 'ofs', 'sspd', 'suspended', 'drop', 'hold', 'start', 'sit'
 ]);
 
 const normalizeForMatch = (value: string) => value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -490,7 +490,7 @@ INSTRUCTIONS:
 7. ${languageInstruction}
 8. For unverified star-injury rumors, include the exact phrase: "do not drop".
 9. If certainty is impossible, append exactly: "${language === 'el'
-        ? 'Βαθμονόμηση αβεβαιότητας: Δεν μπορώ να επιβεβαιώσω με βεβαιότητα μελλοντικά γεγονότα ή ακριβή χρονικά σημεία από τα διαθέσιμα στοιχεία. Χρησιμοποίησε αυτό ως πιθανολογική εκτίμηση και έλεγξε επίσημες ενημερώσεις.'
-        : 'Uncertainty calibration: I cannot verify future events or exact timestamps from current evidence. Treat this as probabilistic guidance and monitor official updates.'
-    }"`;
+            ? 'Βαθμονόμηση αβεβαιότητας: Δεν μπορώ να επιβεβαιώσω με βεβαιότητα μελλοντικά γεγονότα ή ακριβή χρονικά σημεία από τα διαθέσιμα στοιχεία. Χρησιμοποίησε αυτό ως πιθανολογική εκτίμηση και έλεγξε επίσημες ενημερώσεις.'
+            : 'Uncertainty calibration: I cannot verify future events or exact timestamps from current evidence. Treat this as probabilistic guidance and monitor official updates.'
+        }"`;
 }

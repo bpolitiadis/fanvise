@@ -122,7 +122,7 @@ const extractIntelligence = async (text: string): Promise<IntelligenceObject> =>
         - category: (Injury|Trade|Lineup|Performance|Other|General)
         - impact_backup: (string|null) The name of the teammate who gains fantasy value due to this news.
         - is_injury_report: (boolean) Is this primarily an injury update?
-        - injury_status: (string|null) OFS, GTD, OUT, Day-to-Day, or Questionable.
+        - injury_status: (string|null) OFS, GTD, OUT, Day-to-Day, Questionable, or SSPD (Suspended).
         - expected_return_date: (string|null) ISO format if mentioned.
         - impacted_player_ids: (string[]) List of player names affected.
 
@@ -198,7 +198,7 @@ const NBA_KEYWORDS = [
     'Triple-double', 'Double-double', 'Free agent', 'Trade deadline', 'Injury report', 'GTD', 'Out indefinitely', 'Hardship exception', 'Two-way contract'
 ];
 
-const STATUS_KEYWORDS = ['out', 'gtd', 'day-to-day', 'questionable', 'injury', 'ruled out', 'available', 'minutes restriction', 'doubtful', 'ofs'];
+const STATUS_KEYWORDS = ['out', 'gtd', 'day-to-day', 'questionable', 'injury', 'ruled out', 'available', 'minutes restriction', 'doubtful', 'ofs', 'sspd', 'suspended'];
 const STOP_WORDS = new Set([
     'the', 'and', 'for', 'with', 'from', 'that', 'this', 'what', 'when', 'where', 'should', 'would', 'could',
     'about', 'into', 'your', 'my', 'our', 'you', 'are', 'who', 'tonight', 'today', 'week', 'news', 'player'
@@ -207,7 +207,7 @@ const PLAYER_NOISE_TERMS = new Set([
     ...Array.from(STOP_WORDS),
     'nba', 'fantasy', 'basketball', 'latest', 'update', 'updates', 'report', 'reports',
     'status', 'timeline', 'return', 'returns', 'availability', 'injury', 'injuries',
-    'dtd', 'gtd', 'out', 'questionable', 'doubtful', 'ofs', 'ruled', 'available', 'minutes', 'restriction'
+    'dtd', 'gtd', 'out', 'questionable', 'doubtful', 'ofs', 'ruled', 'available', 'minutes', 'restriction', 'sspd', 'suspended'
 ]);
 
 const toIsoDaysAgo = (days: number) => new Date(Date.now() - (days * 24 * 60 * 60 * 1000)).toISOString();
