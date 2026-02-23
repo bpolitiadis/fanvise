@@ -139,6 +139,14 @@ const fetchLeague = unstable_cache(
  * @param rosterSettings - Roster slot configuration
  * @param teams - Array of team data
  */
+/**
+ * Thin public wrapper around fetchLeague for use in agent tools.
+ * Returns the cached DB league (with teams/standings) without calling ESPN.
+ */
+export async function fetchLeagueForTool(leagueId: string) {
+    return fetchLeague(leagueId);
+}
+
 export async function upsertLeague(
     leagueId: string,
     seasonId: string,
@@ -380,15 +388,21 @@ async function fetchMatchupFromEspnUncached(
     }
 }
 
-const fetchMatchupFromEspn = unstable_cache(
-    async (
-        leagueId: string,
-        teamId: string,
-        seasonId: string
-    ): ReturnType<typeof fetchMatchupFromEspnUncached> => fetchMatchupFromEspnUncached(leagueId, teamId, seasonId),
-    ['league-service-fetch-matchup'],
-    { revalidate: 45 }
-);
+/**
+ * Cached ESPN matchup fetch. Cache key MUST include leagueId, teamId, seasonId
+ * to avoid serving one user's roster to another (wrong league/team).
+ */
+function fetchMatchupFromEspn(
+    leagueId: string,
+    teamId: string,
+    seasonId: string
+): ReturnType<typeof fetchMatchupFromEspnUncached> {
+    return unstable_cache(
+        () => fetchMatchupFromEspnUncached(leagueId, teamId, seasonId),
+        ['league-service-fetch-matchup', leagueId, teamId, seasonId],
+        { revalidate: 45 }
+    )();
+}
 
 // ============================================================================
 // Schedule Density Calculation
