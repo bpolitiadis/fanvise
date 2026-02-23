@@ -41,6 +41,7 @@ interface SearchNewsItem {
     url?: string | null;
     content?: string | null;
     summary?: string | null;
+    full_content?: string | null;
     published_at?: string | null;
     source?: string | null;
     player_name?: string | null;
@@ -298,7 +299,8 @@ const computeHybridScore = (item: SearchNewsItem, terms: string[], intent: Searc
     const recencyScore = Math.max(0, 1 - (ageHours / (24 * 7))); // 0 after ~7 days
     const trustScore = Math.min(1, Math.max(0, (item.trust_level || 1) / 5));
     const vectorScore = Math.max(0, Math.min(1, item.similarity || 0));
-    const keywordText = `${item.title || ''} ${item.summary || ''} ${item.content || ''} ${item.player_name || ''} ${item.injury_status || ''}`;
+    const bodyText = (item.full_content || item.content || item.summary || "").substring(0, 800);
+    const keywordText = `${item.title || ''} ${item.summary || ''} ${bodyText} ${item.player_name || ''} ${item.injury_status || ''}`;
     const keywordScore = textHitScore(keywordText, terms);
     const playerScore = getPlayerMatchScore(item, intent);
 
@@ -349,17 +351,53 @@ interface RssIngestItem {
     content?: string;
     isoDate?: string;
     guid?: string;
+    /** ESPN API URL for full article fetch (backfill only) */
+    espnApiUrl?: string;
+}
+
+/** Extract ESPN article ID from ESPN URLs (web, mobile, api) */
+const ESPN_ID_REGEX = /[?&](?:id|storyId)=(\d+)|(?:\/_\/id\/)(\d+)|(?:\/news\/)(\d+)/i;
+
+function extractEspnArticleId(url: string): string | null {
+    if (!url || !url.includes('espn')) return null;
+    const m = url.match(ESPN_ID_REGEX);
+    return m ? (m[1] || m[2] || m[3] || null) : null;
+}
+
+/** Fetch full article text from ESPN content API. Returns null on failure. */
+async function fetchEspnFullArticle(apiUrlOrId: string): Promise<string | null> {
+    let apiUrl: string;
+    if (/^\d+$/.test(apiUrlOrId)) {
+        apiUrl = `https://content.core.api.espn.com/v1/sports/news/${apiUrlOrId}`;
+    } else {
+        apiUrl = apiUrlOrId;
+    }
+    if (!apiUrl.includes('content.core.api.espn.com')) return null;
+
+    try {
+        const res = await fetch(apiUrl, { next: { revalidate: 0 } });
+        if (!res.ok) return null;
+        const data = (await res.json()) as { headlines?: Array<{ story?: string }> };
+        const story = data?.headlines?.[0]?.story;
+        if (!story || typeof story !== 'string') return null;
+        return cleanContent(story).trim() || null;
+    } catch {
+        return null;
+    }
 }
 
 // --- Mapping Utilities ---
 function mapEspnArticleToRssItem(article: Record<string, unknown>): RssIngestItem {
     const links = article.links as { web?: { href?: string }; api?: { self?: { href?: string } } } | undefined;
+    const apiHref = links?.api?.self?.href;
+    const webHref = links?.web?.href;
     return {
         title: article.headline as string,
-        link: links?.web?.href || links?.api?.self?.href,
+        link: webHref || apiHref,
         contentSnippet: article.description as string,
         content: article.description as string,
-        isoDate: article.published as string
+        isoDate: article.published as string,
+        espnApiUrl: apiHref && apiHref.includes('/news/') ? apiHref : undefined,
     };
 }
 
@@ -399,7 +437,23 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
             return true;
         }
 
-        const contentText = cleanContent(item.contentSnippet || item.title || "");
+        // 3a. Fetch full ESPN article when available (API or extracted ID from URL)
+        let fullContent: string | null = null;
+        if (source === 'ESPN') {
+            const apiUrl = item.espnApiUrl;
+            const articleId = apiUrl ? null : (item.link ? extractEspnArticleId(item.link) : null);
+            const fetchTarget = apiUrl ?? (articleId ? `https://content.core.api.espn.com/v1/sports/news/${articleId}` : null);
+            if (fetchTarget) {
+                fullContent = await withTimeout(
+                    fetchEspnFullArticle(fetchTarget),
+                    8000,
+                    "ESPN full article fetch"
+                ).catch(() => null);
+            }
+        }
+
+        const snippetText = cleanContent(item.contentSnippet || item.title || "");
+        const contentText = fullContent || snippetText;
         const intelligencePromise = withTimeout(
             extractIntelligence(contentText),
             AI_STEP_TIMEOUT_MS,
@@ -419,8 +473,9 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
                 trust_level: 1,
             };
         });
+        const embedSource = contentText.length > 600 ? `${item.title} ${contentText.substring(0, 600)}` : `${item.title} ${contentText}`;
         const embeddingPromise = withTimeout(
-            getEmbedding(`${item.title} ${contentText}`),
+            getEmbedding(embedSource),
             AI_STEP_TIMEOUT_MS,
             "embedding generation"
         )
@@ -442,6 +497,7 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
             url: item.link,
             content: cleanContent(item.content || item.contentSnippet || ""),
             summary: cleanContent(item.contentSnippet || ""),
+            full_content: fullContent ? cleanContent(fullContent) : null,
             published_at: item.isoDate || new Date().toISOString(),
             source: source,
             embedding: embedding,
@@ -620,7 +676,7 @@ export async function searchNews(query: string, limit = 15) {
             if (orClauses.length > 0) {
                 const { data: lexicalData, error: lexicalError } = await supabase
                     .from('news_items')
-                    .select('id,title,url,content,summary,published_at,source,player_name,sentiment,category,impact_backup,is_injury_report,injury_status,expected_return_date,impacted_player_ids,trust_level')
+                    .select('id,title,url,content,summary,full_content,published_at,source,player_name,sentiment,category,impact_backup,is_injury_report,injury_status,expected_return_date,impacted_player_ids,trust_level')
                     .gt('published_at', cutoff)
                     .or(orClauses.join(','))
                     .order('published_at', { ascending: false })
@@ -665,7 +721,9 @@ export async function searchNews(query: string, limit = 15) {
             }
         }
 
-        const ranked = rankedEntries.slice(0, limit).map(({ item }) => item);
+        let ranked = rankedEntries.slice(0, limit).map(({ item }) => item);
+
+        // TODO: Filter by user's enabled news sources when userId is available (Phase 3)
 
         console.log(`Hybrid RAG found ${ranked.length} items (vector=${vectorRows.length}, lexical=${lexicalRows.length}).`);
         return ranked;
@@ -736,4 +794,110 @@ export async function searchPlayerStatusSnapshots(query: string, limit = 5): Pro
     }
 
     return normalized.slice(0, limit);
+}
+
+// ─── Live Player-Specific News Fetch ─────────────────────────────────────────
+
+export interface FreshNewsResult {
+    /** How many new articles were ingested into the DB during this call */
+    refreshed: number;
+    /** The latest news items for this player (fresh + existing), ranked by relevance */
+    items: SearchNewsItem[];
+}
+
+/**
+ * Fetches all configured RSS feeds in parallel, filters for articles that
+ * mention the given player, ingests any new items into `news_items`, then
+ * returns a fresh DB snapshot for the player.
+ *
+ * Designed to be called by the `refresh_player_news` agent tool when the
+ * standard `get_player_news` search returned stale or empty results.
+ */
+export async function fetchPlayerSpecificNews(
+    playerName: string,
+    options: { feedTimeoutMs?: number } = {}
+): Promise<FreshNewsResult> {
+    const feedTimeoutMs = options.feedTimeoutMs ?? 5_000;
+
+    // Tokens used for quick title/content matching (e.g. "lebron james" → ["lebron", "james"])
+    const playerTokens = normalizeForMatch(playerName)
+        .split(/\s+/)
+        .filter(t => t.length >= 2);
+
+    if (playerTokens.length === 0) {
+        return { refreshed: 0, items: [] };
+    }
+
+    const matchesPlayer = (text: string): boolean => {
+        const norm = normalizeForMatch(text);
+        // Require ALL tokens to be present (avoids false positives on common words)
+        return playerTokens.every(token => norm.includes(token));
+    };
+
+    // --- 1. Fetch all feeds in parallel with per-feed timeout ---
+    const fetchFeed = async (feed: { source: string; url: string }): Promise<RssIngestItem[]> => {
+        try {
+            const parsed = await Promise.race([
+                parser.parseURL(feed.url),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error(`Feed ${feed.source} timed out`)), feedTimeoutMs)
+                ),
+            ]);
+            return (parsed.items || []) as RssIngestItem[];
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[News Service] fetchPlayerSpecificNews: feed ${feed.source} skipped — ${msg}`);
+            return [];
+        }
+    };
+
+    const allFeedResults = await Promise.all(FEEDS.map(feed => fetchFeed(feed).then(items => ({ feed, items }))));
+
+    // --- 2. Collect only items that mention the player ---
+    const seen = new Set<string>();
+    const candidates: Array<{ item: RssIngestItem; source: string; trustLevel: number }> = [];
+
+    for (const { feed, items } of allFeedResults) {
+        for (const item of items) {
+            const combinedText = `${item.title ?? ""} ${item.contentSnippet ?? ""} ${item.content ?? ""}`;
+            if (!matchesPlayer(combinedText)) continue;
+
+            const dedupeKey = item.guid || item.link;
+            if (!dedupeKey || seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+
+            candidates.push({
+                item,
+                source: feed.source,
+                trustLevel: FEEDS.find(f => f.source === feed.source)?.trust_level ?? 3,
+            });
+        }
+    }
+
+    console.log(
+        `[News Service] fetchPlayerSpecificNews("${playerName}"): found ${candidates.length} matching article(s) across feeds`
+    );
+
+    // --- 3. Ingest each candidate (deduplication inside processItem) ---
+    let refreshed = 0;
+    // Process in small batches to stay within AI rate limits
+    const batchSize = 2;
+    for (let i = 0; i < candidates.length; i += batchSize) {
+        const batch = candidates.slice(i, i + batchSize);
+        const results = await Promise.all(
+            batch.map(({ item, source }) =>
+                processItem(item, source, [playerName], [...NBA_KEYWORDS, playerName], false)
+            )
+        );
+        refreshed += results.filter(Boolean).length;
+        if (batch.length > 0 && i + batchSize < candidates.length) {
+            await sleep(500);
+        }
+    }
+
+    // --- 4. Return a fresh DB snapshot for the agent ---
+    const searchQuery = `${playerName} injury status news update latest`;
+    const items = await searchNews(searchQuery, 10);
+
+    return { refreshed, items };
 }
