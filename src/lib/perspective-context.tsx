@@ -85,27 +85,31 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
       let leagueId = forceLeagueId
 
       if (!leagueId && teamId) {
-        // Try to find league for this team in user_leagues
         const { data: userLeagueData } = await supabase
           .from('user_leagues')
           .select('league_id')
           .eq('team_id', teamId)
           .maybeSingle()
-        
         leagueId = userLeagueData?.league_id
       }
 
-      // Fallback to env var if still no leagueId
+      // Fallback: user_settings.espn_league_id → env var
       if (!leagueId) {
-        leagueId = process.env.NEXT_PUBLIC_ESPN_LEAGUE_ID
-        console.log('Using default league ID from env:', leagueId)
+        const { data: authData } = await supabase.auth.getUser()
+        if (authData.user) {
+          const { data: settings } = await supabase
+            .from('user_settings')
+            .select('espn_league_id')
+            .eq('user_id', authData.user.id)
+            .maybeSingle()
+          leagueId = settings?.espn_league_id ?? undefined
+        }
       }
+      if (!leagueId) leagueId = process.env.NEXT_PUBLIC_ESPN_LEAGUE_ID
 
       if (!leagueId) {
         throw new Error('No league context available. Check NEXT_PUBLIC_ESPN_LEAGUE_ID.')
       }
-
-      console.log('Fetching league data for ID:', leagueId)
 
       // 2. Fetch League
       const { data: leagueData, error: leagueError } = await supabase
@@ -114,37 +118,48 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
         .eq('league_id', leagueId)
         .single()
 
-      if (leagueError) {
-        console.error('Supabase error fetching league:', leagueError)
-        throw new Error(`Database error: ${leagueError.message}`)
-      }
+      if (leagueError) throw new Error(`Database error: ${leagueError.message}`)
       if (!leagueData) throw new Error('League not found')
 
-      const rawLeague = leagueData as League
-      const teams = normalizeTeams(rawLeague.teams as Team[] | undefined)
-      const league: League = {
-        ...rawLeague,
-        teams,
+      // 3. Determine the user's own team ID (settings → env var fallback)
+      //    This drives is_user_owned so the sidebar shows "YOU" on the correct team.
+      let ownTeamId: string | null = null
+      const { data: authData } = await supabase.auth.getUser()
+      if (authData.user) {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('espn_team_id')
+          .eq('user_id', authData.user.id)
+          .maybeSingle()
+        ownTeamId = settings?.espn_team_id?.trim() || null
       }
+      // Final fallback to env var (dev convenience)
+      if (!ownTeamId) ownTeamId = process.env.NEXT_PUBLIC_ESPN_TEAM_ID ?? null
+
+      const rawLeague = leagueData as League
+      // Annotate teams: mark the user's own team from settings/env, or keep existing is_user_owned
+      const teams = normalizeTeams(rawLeague.teams as Team[] | undefined).map((t) => ({
+        ...t,
+        is_user_owned: ownTeamId
+          ? String(t.id) === String(ownTeamId)
+          : Boolean(t.is_user_owned),
+      }))
+
+      const league: League = { ...rawLeague, teams }
       setActiveLeague(league)
       setActiveLeagueId(league.league_id)
 
-      // 3. Set Active Team if teamId is provided
-      
-      
+      // 4. Set active team
       if (teamId) {
         const team = teams.find(t => String(t.id) === String(teamId))
         if (team) {
           setActiveTeam(team)
           setActiveTeamId(team.id)
         } else {
-          console.warn(`[Perspective] Team ${teamId} not found in league ${leagueId}. Clearing stale perspective.`)
+          console.warn(`[Perspective] Team ${teamId} not found — falling back.`)
           localStorage.removeItem(STORAGE_KEY)
-          
-          // Single-league fallback: user-owned team if present, otherwise first team.
           const fallbackTeam = resolveDefaultTeam(teams)
           if (fallbackTeam) {
-            console.log(`[Perspective] Defaulting to fallback team: ${fallbackTeam.name}`)
             setActiveTeam(fallbackTeam)
             setActiveTeamId(fallbackTeam.id)
             localStorage.setItem(STORAGE_KEY, fallbackTeam.id)
@@ -154,10 +169,8 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
           }
         }
       } else {
-        // No teamId provided, default to user-owned team or first team.
         const fallbackTeam = resolveDefaultTeam(teams)
         if (fallbackTeam) {
-          console.log(`[Perspective] Defaulting to fallback team: ${fallbackTeam.name}`)
           setActiveTeam(fallbackTeam)
           setActiveTeamId(fallbackTeam.id)
           localStorage.setItem(STORAGE_KEY, fallbackTeam.id)
