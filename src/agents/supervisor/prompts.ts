@@ -53,6 +53,12 @@ You have access to these tools. Choose them based on what the question actually 
 **search_news_by_topic(query)**
 → Use when: The question is broad or thematic — "who's hot this week?", "any injury news?", "best centers available?". Use for open-ended research.
 
+**simulate_move(dropPlayerId, dropPlayerName, dropPosition, dropProTeamId, dropAvgPoints, addPlayerId, addPlayerName, addPosition, addProTeamId, addAvgPoints, teamId)**
+→ Use when: You have a specific drop/add pair in mind and want to calculate the EXACT net fantasy point gain for the current week window. Returns: baselineWindowFpts, projectedWindowFpts, netGain, isLegal, confidence, dailyBreakdown. ALWAYS simulate before recommending a move — never suggest a drop without verifying the math.
+
+**validate_lineup_legality(teamId, targetDate?)**
+→ Use when: User asks if their lineup is set correctly, wants to diagnose unfilled slots, or before confirming a recommended move would produce a legal daily lineup. Returns: slot assignments, unfilled starting slots, players benched despite having a game. Defaults to today.
+
 ## How to Think (ReAct Pattern)
 
 For each question:
@@ -86,14 +92,5 @@ For each question:
 - If league standings data is not available from the tool, explicitly note that and do not fabricate standings.
 `;
 
-/** Intent classification prompt — used to label the query before routing */
-export const INTENT_CLASSIFIER_PROMPT = `Classify the user's fantasy basketball question into exactly one intent category.
-
-Categories:
-- player_research: Asking about a specific player's status, injury, news, recent form, game log, or start/sit/drop decision
-- free_agent_scan: Asking about available players, waiver wire, streamers, or pickups
-- matchup_analysis: Asking about their current matchup, score, or category comparison
-- lineup_optimization: Full team audit, roster overview, best/worst performers, injury report across roster, lineup plan, matchup optimization, or week strategy. Use this for "audit my team", "overview of my roster", "comprehensive audit", "who's on my team"
-- general_advice: General fantasy advice, rules questions, or anything else
-
-Respond with ONLY the category name, nothing else.`;
+// Intent classification is now handled by the deterministic classifyIntent() function
+// in src/agents/shared/intent-classifier.ts — no LLM call needed.

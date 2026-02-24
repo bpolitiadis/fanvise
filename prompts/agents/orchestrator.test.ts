@@ -24,7 +24,7 @@ describe('Orchestrator Prompt', () => {
     it('should include the Role Definition', () => {
         const prompt = getOrchestratorPrompt(mockContext);
         expect(prompt).toContain('# ROLE DEFINITION');
-        expect(prompt).toContain('FanVise Strategist');
+        expect(prompt).toContain('FanVise General Manager');
     });
 
     it('should include Source Grounding Rules', () => {
