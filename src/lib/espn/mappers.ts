@@ -77,7 +77,9 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
             t.owners && t.owners.length > 0 && m.id === t.owners[0]
         );
 
-        const isUserOwned = swid && t.owners ? t.owners.includes(swid) : false;
+        // Trim to guard against accidental whitespace in env vars, and ensure non-empty
+        const effectiveSwid = swid?.trim() || null;
+        const isUserOwned = effectiveSwid ? (t.owners?.includes(effectiveSwid) ?? false) : false;
 
         return {
             id: String(t.id),

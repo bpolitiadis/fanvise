@@ -633,64 +633,60 @@ export async function searchNews(query: string, limit = 15) {
 
     try {
         const searchIntent = getSearchIntent(query);
-
-        // 1. Embed query for vector retrieval (skipped gracefully when API key is absent)
-        let embedding: number[] | null = null;
-        if (canEmbed) {
-            try {
-                embedding = await getEmbedding(query);
-                console.log(`Searching news with embedding (dim: ${embedding.length}) for: "${query.substring(0, 30)}..."`);
-            } catch (embedErr) {
-                const msg = embedErr instanceof Error ? embedErr.message : String(embedErr);
-                console.warn(`[News Service] Embedding failed, falling back to lexical-only: ${msg}`);
-                embedding = null;
-            }
-        }
-
-        // 2. Vector retrieval via RPC — only when an embedding was successfully generated
         const daysBack = searchIntent.isInjuryQuery ? 30 : 14;
-        let vectorData: unknown[] | null = null;
 
-        if (embedding) {
-            const { data, error: vectorError } = await supabase.rpc('match_news_documents', {
-                query_embedding: embedding,
-                match_threshold: 0.25,
-                match_count: Math.max(limit * 2, 20),
-                days_back: daysBack
-            });
-
-            if (vectorError) {
-                console.error("Supabase RPC match_news_documents error:", vectorError);
-            } else {
-                vectorData = data;
-            }
-        }
-
-        // 3. Lightweight lexical retrieval fallback (hybrid behavior without DB migration)
+        // Compute lexical inputs synchronously — no I/O dependencies
         const terms = getQueryTerms(query);
         const lexicalTerms = Array.from(new Set([...terms, ...searchIntent.playerTokens]));
         const cutoff = toIsoDaysAgo(daysBack);
-        let lexicalRows: SearchNewsItem[] = [];
 
-        if (lexicalTerms.length > 0) {
-            const orClauses: string[] = [];
-            for (const term of lexicalTerms) {
-                if (!term) continue;
-                orClauses.push(`title.ilike.%${term}%`);
-                orClauses.push(`summary.ilike.%${term}%`);
-                orClauses.push(`content.ilike.%${term}%`);
-                orClauses.push(`player_name.ilike.%${term}%`);
-                orClauses.push(`injury_status.ilike.%${term}%`);
-            }
-            for (const candidate of searchIntent.playerCandidates) {
-                if (!candidate) continue;
-                orClauses.push(`title.ilike.%${candidate}%`);
-                orClauses.push(`summary.ilike.%${candidate}%`);
-                orClauses.push(`content.ilike.%${candidate}%`);
-                orClauses.push(`player_name.ilike.%${candidate}%`);
-            }
+        // Vector path (embedding → RPC) and lexical path run concurrently.
+        const [vectorData, lexicalRows] = await Promise.all([
+            // --- Vector path ---
+            (async (): Promise<unknown[] | null> => {
+                if (!canEmbed) return null;
+                let embedding: number[];
+                try {
+                    embedding = await getEmbedding(query);
+                    console.log(`Searching news with embedding (dim: ${embedding.length}) for: "${query.substring(0, 30)}..."`);
+                } catch (embedErr) {
+                    const msg = embedErr instanceof Error ? embedErr.message : String(embedErr);
+                    console.warn(`[News Service] Embedding failed, falling back to lexical-only: ${msg}`);
+                    return null;
+                }
+                const { data, error: vectorError } = await supabase.rpc('match_news_documents', {
+                    query_embedding: embedding,
+                    match_threshold: 0.25,
+                    match_count: Math.max(limit * 2, 20),
+                    days_back: daysBack,
+                });
+                if (vectorError) {
+                    console.error("Supabase RPC match_news_documents error:", vectorError);
+                    return null;
+                }
+                return data;
+            })(),
 
-            if (orClauses.length > 0) {
+            // --- Lexical path --- (fires immediately, no embedding dependency)
+            (async (): Promise<SearchNewsItem[]> => {
+                if (lexicalTerms.length === 0) return [];
+                const orClauses: string[] = [];
+                for (const term of lexicalTerms) {
+                    if (!term) continue;
+                    orClauses.push(`title.ilike.%${term}%`);
+                    orClauses.push(`summary.ilike.%${term}%`);
+                    orClauses.push(`content.ilike.%${term}%`);
+                    orClauses.push(`player_name.ilike.%${term}%`);
+                    orClauses.push(`injury_status.ilike.%${term}%`);
+                }
+                for (const candidate of searchIntent.playerCandidates) {
+                    if (!candidate) continue;
+                    orClauses.push(`title.ilike.%${candidate}%`);
+                    orClauses.push(`summary.ilike.%${candidate}%`);
+                    orClauses.push(`content.ilike.%${candidate}%`);
+                    orClauses.push(`player_name.ilike.%${candidate}%`);
+                }
+                if (orClauses.length === 0) return [];
                 const { data: lexicalData, error: lexicalError } = await supabase
                     .from('news_items')
                     .select('id,title,url,content,summary,full_content,published_at,source,player_name,sentiment,category,impact_backup,is_injury_report,injury_status,expected_return_date,impacted_player_ids,trust_level')
@@ -698,14 +694,13 @@ export async function searchNews(query: string, limit = 15) {
                     .or(orClauses.join(','))
                     .order('published_at', { ascending: false })
                     .limit(Math.max(limit * 3, 24));
-
                 if (lexicalError) {
                     console.error("Supabase lexical news search error:", lexicalError);
-                } else {
-                    lexicalRows = (lexicalData || []).map(normalizeSearchRow);
+                    return [];
                 }
-            }
-        }
+                return (lexicalData || []).map(normalizeSearchRow);
+            })(),
+        ]);
 
         const vectorRows = (vectorData || []).map(normalizeSearchRow);
         const merged = new Map<string, SearchNewsItem>();

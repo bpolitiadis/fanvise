@@ -277,7 +277,7 @@ async function fetchMatchupFromEspnUncached(
         // Wrapped in withRetry to handle transient ESPN 429 rate-limits or network failures
         // that would otherwise silently drop all roster/matchup context from the AI prompt.
         const matchupData = await withRetry(
-            () => espnClient.getMatchups(undefined, ['mMatchupScore', 'mScoreboard', 'mRoster', 'rosterForCurrentScoringPeriod']),
+            () => espnClient.getMatchups(undefined, ['mMatchupScore', 'mScoreboard', 'mRoster']),
             3,
             1000
         );
@@ -542,7 +542,24 @@ const fetchFreeAgentsCached = unstable_cache(
  * @param teams - Database team objects for name resolution
  * @returns Array of formatted transaction strings (limited to last 10)
  */
-function processTransactions(transactions: any[], teams: DbTeam[]): string[] {
+interface EspnTransactionItem {
+    type?: string;
+    playerPoolEntry?: {
+        player?: {
+            fullName?: string;
+        };
+    };
+}
+
+interface EspnTransaction {
+    type?: string;
+    status?: string;
+    teamId?: number;
+    processDate?: number;
+    items?: EspnTransactionItem[];
+}
+
+function processTransactions(transactions: EspnTransaction[], teams: DbTeam[]): string[] {
     if (!Array.isArray(transactions)) return [];
 
     // Create a map of team ID to team name/abbrev
@@ -556,19 +573,19 @@ function processTransactions(transactions: any[], teams: DbTeam[]): string[] {
 
     // Sort by date descending (newest first)
     const sorted = [...transactions]
-        .filter(t => relevantTypes.includes(t.type) && t.status === 'EXECUTED')
-        .sort((a, b) => b.processDate - a.processDate);
+        .filter(t => relevantTypes.includes(t.type ?? '') && t.status === 'EXECUTED')
+        .sort((a, b) => (b.processDate ?? 0) - (a.processDate ?? 0));
 
     return sorted.slice(0, 10).map(t => {
-        const teamName = teamMap.get(t.teamId) || `Team ${t.teamId || 'Unknown'}`;
-        const date = new Date(t.processDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const teamName = teamMap.get(t.teamId ?? -1) || `Team ${t.teamId ?? 'Unknown'}`;
+        const date = new Date(t.processDate ?? 0).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
         // Process items (players added/dropped)
-        const items = t.items || [];
+        const items: EspnTransactionItem[] = t.items ?? [];
         const additions: string[] = [];
         const drops: string[] = [];
 
-        items.forEach((item: any) => {
+        items.forEach((item) => {
             const playerName = item.playerPoolEntry?.player?.fullName || 'Unknown Player';
             if (item.type === 'ADD') additions.push(playerName);
             if (item.type === 'DROP') drops.push(playerName);

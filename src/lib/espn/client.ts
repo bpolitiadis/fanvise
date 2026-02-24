@@ -121,20 +121,17 @@ export class EspnClient {
     }
 
     async getMatchups(scoringPeriodId?: number, views: string[] = ["mMatchup"]) {
-        // If no scoring period is provided, fetch for the current week (assumed logic elsewhere or default view)
-        const viewParams = views.map(v => `view=${v}`).join('&');
-        let url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?${viewParams}`;
-
-        if (scoringPeriodId) {
-            url += `&scoringPeriodId=${scoringPeriodId}`;
+        const params: Record<string, string | number> = {};
+        if (typeof scoringPeriodId === "number" && Number.isFinite(scoringPeriodId)) {
+            params.scoringPeriodId = Math.floor(scoringPeriodId);
         }
-
+        const url = this.buildLeagueUrl(views, params);
         console.log(`Fetching Matchups: ${url}`);
 
         try {
             const response = await fetch(url, {
                 headers: this.getHeaders(),
-                next: { revalidate: 60 } // Cache for 1 minute
+                next: { revalidate: 60 },
             });
 
             if (!response.ok) {
