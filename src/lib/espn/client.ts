@@ -149,8 +149,10 @@ export class EspnClient {
     }
 
     async getTransactions() {
-        // Fetch transactions and roster to allow player name resolution
-        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=mTransactions2&view=mRoster`;
+        // mTeam is required for full team name fields (location + nickname).
+        // mRoster provides player data for name resolution of rostered players.
+        // mTransactions2 provides the transaction list.
+        const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=mTransactions2&view=mTeam&view=mRoster`;
 
         console.log(`Fetching Transactions: ${url}`);
 
@@ -425,29 +427,35 @@ export class EspnClient {
 
     /**
      * Batch fetch player info for a list of player IDs.
-     * Useful for resolving names when they are missing from roster views.
+     * Useful for resolving names when they are missing from roster views (e.g. dropped players).
+     *
+     * Per the ESPN API reference, ID-based lookups must use ONLY filterIds.
+     * Adding filterStatus causes ESPN to apply both conditions simultaneously and silently
+     * drops players whose current status falls outside the allowed set — this is exactly
+     * what happens to players that were recently dropped and are in a transient state.
      */
     async getPlayerInfo(playerIds: number[]) {
         if (!playerIds.length) return [];
 
         const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/${this.sport}/seasons/${this.year}/segments/0/leagues/${this.leagueId}?view=kona_player_info`;
 
-        // Remove duplicates
         const uniqueIds = Array.from(new Set(playerIds));
-        console.log(`Fetching Player Info for ${uniqueIds.length} players...`);
+        console.log(`Fetching Player Info for ${uniqueIds.length} players: [${uniqueIds.join(", ")}]`);
 
         const headers = this.getHeaders() as Record<string, string>;
+        // filterIds only — no filterStatus, which would silently exclude transient-status players
         headers["x-fantasy-filter"] = JSON.stringify({
             players: {
                 filterIds: { value: uniqueIds },
-                filterStatus: { value: ["FREEAGENT", "WAIVERS", "ONTEAM"] } // Look everywhere
             },
         });
 
         try {
             const response = await fetch(url, {
                 headers,
-                next: { revalidate: 3600 } // Cache for 1 hour as names don't change often
+                // Short TTL: recently dropped players change status quickly; a stale
+                // empty response cached for hours would leave names permanently unresolved.
+                next: { revalidate: 60 },
             });
 
             if (!response.ok) {
@@ -455,10 +463,11 @@ export class EspnClient {
             }
 
             const data = await response.json();
-            return data.players || [];
+            const players = data.players || [];
+            console.log(`Player Info resolved ${players.length} / ${uniqueIds.length} players`);
+            return players;
         } catch (error) {
             console.error("Failed to fetch player info batch:", error);
-            // Return empty array to allow partial success elsewhere
             return [];
         }
     }

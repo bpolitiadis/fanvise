@@ -27,9 +27,20 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (activeLeagueId) {
-       getLatestTransactions(activeLeagueId, 10).then(data => setTransactions(data as TransactionItem[]));
-    }
+    if (!activeLeagueId) return;
+
+    // Show cached DB data immediately for a fast first render
+    getLatestTransactions(activeLeagueId, 10).then(data =>
+      setTransactions(data as TransactionItem[])
+    );
+
+    // Then sync fresh data from ESPN in the background so the feed stays current
+    const year = new Date().getFullYear().toString();
+    const sport = process.env.NEXT_PUBLIC_ESPN_SPORT || "fba";
+    fetchAndSyncTransactions(activeLeagueId, year, sport)
+      .then(() => getLatestTransactions(activeLeagueId, 10))
+      .then(data => setTransactions(data as TransactionItem[]))
+      .catch(err => console.error("[Dashboard] Background transaction sync failed:", err));
   }, [activeLeagueId]);
 
   const handleLeagueSync = async () => {

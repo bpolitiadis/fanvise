@@ -693,16 +693,18 @@ export const getLeagueActivityTool = tool(
       (dbLeague?.teams ?? []).map((t) => [Number(t.id), t.name ?? t.abbrev ?? `Team ${t.id}`])
     );
 
+    // ESPN may return either "TRADE" or "TRADE_ACCEPT" depending on league/API version.
     const TYPE_LABEL: Record<string, string> = {
       WAIVER: "WAIVER PICKUP",
       FREEAGENT: "FA PICKUP",
+      TRADE: "TRADE",
       TRADE_ACCEPT: "TRADE",
     };
 
     const typeKey = type?.toUpperCase();
     const typeFilterKeys: string[] | null =
       typeKey === "TRADE"
-        ? ["TRADE_ACCEPT"]
+        ? ["TRADE", "TRADE_ACCEPT"]
         : typeKey === "WAIVER"
           ? ["WAIVER"]
           : typeKey === "FA"
@@ -712,7 +714,7 @@ export const getLeagueActivityTool = tool(
     return transactions
       .filter((t) => {
         if (t.status !== "EXECUTED") return false;
-        if (!["WAIVER", "FREEAGENT", "TRADE_ACCEPT"].includes(t.type as string)) return false;
+        if (!["WAIVER", "FREEAGENT", "TRADE", "TRADE_ACCEPT"].includes(t.type as string)) return false;
         if (typeFilterKeys && !typeFilterKeys.includes(t.type as string)) return false;
         return true;
       })
