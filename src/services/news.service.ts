@@ -810,11 +810,204 @@ export async function searchPlayerStatusSnapshots(query: string, limit = 5): Pro
 
 // ─── Live Player-Specific News Fetch ─────────────────────────────────────────
 
+// ─── ESPN Playercard News Ingestion ──────────────────────────────────────────
+
+/**
+ * Structured data extracted from a kona_playercard player entry.
+ * ESPN embeds this Rotowire-sourced content directly in the player object —
+ * it is more authoritative and always current than any RSS feed.
+ */
+export interface PlayerCardNewsData {
+    playerName: string;
+    espnPlayerId: number;
+    injuryStatus: string | null;
+    injuryType: string | null;
+    /** ISO date string (YYYY-MM-DD) parsed from ESPN's [year, month, day] tuple */
+    expectedReturnDate: string | null;
+    seasonOutlook: string | null;
+    /** Unix ms timestamp of the last Rotowire update for this player */
+    lastNewsTimestamp: number | null;
+}
+
+/**
+ * Parses a raw kona_playercard `player` sub-object into a typed struct.
+ * Returns null when there is nothing useful to ingest.
+ */
+export function extractPlayerCardData(
+    playerName: string,
+    espnPlayerId: number,
+    playerObj: Record<string, unknown>
+): PlayerCardNewsData | null {
+    const lastNewsTs = typeof playerObj.lastNewsDate === 'number' ? playerObj.lastNewsDate : null;
+    const injuryStatus = typeof playerObj.injuryStatus === 'string' ? playerObj.injuryStatus : null;
+    const seasonOutlook = typeof playerObj.seasonOutlook === 'string' ? playerObj.seasonOutlook.trim() : null;
+
+    const details = playerObj.injuryDetails as Record<string, unknown> | null | undefined;
+    const injuryType = typeof details?.type === 'string' ? details.type : null;
+
+    let expectedReturnDate: string | null = null;
+    if (Array.isArray(details?.expectedReturnDate)) {
+        const [y, m, d] = details!.expectedReturnDate as [number, number, number];
+        if (y && m && d) {
+            // ESPN returns [year, month, day] in local time — convert to ISO date string
+            expectedReturnDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+    }
+
+    // Only worth ingesting if we have at least one meaningful signal
+    if (!injuryStatus && !seasonOutlook && !lastNewsTs) return null;
+
+    return { playerName, espnPlayerId, injuryStatus, injuryType, expectedReturnDate, seasonOutlook, lastNewsTimestamp: lastNewsTs };
+}
+
+/**
+ * Persists a player's ESPN playercard snapshot as a news item with vector embedding.
+ *
+ * Uses a stable GUID keyed on `espnPlayerId + lastNewsTimestamp` so the same
+ * snapshot is never ingested twice. When ESPN updates `lastNewsDate` (meaning
+ * Rotowire published a new note), a fresh item is created automatically.
+ */
+export async function ingestPlayerCardData(data: PlayerCardNewsData): Promise<boolean> {
+    const dedupeGuid = `espn-card:${data.espnPlayerId}:${data.lastNewsTimestamp ?? 0}`;
+
+    const { data: existing } = await supabase
+        .from('news_items')
+        .select('id')
+        .eq('guid', dedupeGuid)
+        .maybeSingle();
+
+    if (existing) return false; // snapshot already stored
+
+    // Build content text from structured fields
+    const lines: string[] = [];
+    if (data.injuryStatus && data.injuryType) {
+        lines.push(`${data.playerName} is listed as ${data.injuryStatus} with a ${data.injuryType} injury.`);
+    } else if (data.injuryStatus) {
+        lines.push(`${data.playerName} is listed as ${data.injuryStatus}.`);
+    }
+    if (data.expectedReturnDate) {
+        lines.push(`Expected return date: ${data.expectedReturnDate}.`);
+    }
+    if (data.seasonOutlook) {
+        lines.push(data.seasonOutlook);
+    }
+
+    const content = lines.join(' ').trim();
+    if (!content) return false;
+
+    // Compose a descriptive title
+    const titleParts = [data.playerName];
+    if (data.injuryStatus) titleParts.push(`${data.injuryStatus}${data.injuryType ? ` (${data.injuryType})` : ''}`);
+    if (data.expectedReturnDate) titleParts.push(`Expected Return: ${data.expectedReturnDate}`);
+    const title = titleParts.join(' — ');
+
+    const publishedAt = data.lastNewsTimestamp
+        ? new Date(data.lastNewsTimestamp).toISOString()
+        : new Date().toISOString();
+
+    // Generate embedding and extract intelligence in parallel
+    const embedSource = `${title} ${content.substring(0, 600)}`;
+    const [embedding, intelligence] = await Promise.all([
+        getEmbedding(embedSource).catch(() => null),
+        withTimeout(extractIntelligence(content), AI_STEP_TIMEOUT_MS, 'playercard intelligence').catch(() => null),
+    ]);
+
+    const { error } = await supabase.from('news_items').insert({
+        title,
+        url: `https://www.espn.com/nba/player/_/id/${data.espnPlayerId}`,
+        content,
+        summary: lines[0] ?? content.substring(0, 300),
+        full_content: content,
+        published_at: publishedAt,
+        source: 'ESPN (Rotowire)',
+        embedding,
+        player_name: data.playerName,
+        sentiment: intelligence?.sentiment ?? (data.injuryStatus ? 'NEGATIVE' : 'NEUTRAL'),
+        category: intelligence?.category ?? (data.injuryStatus ? 'Injury' : 'Other'),
+        impact_backup: intelligence?.impact_backup ?? null,
+        is_injury_report: Boolean(data.injuryStatus),
+        injury_status: data.injuryStatus,
+        expected_return_date: data.expectedReturnDate
+            ? normalizeExpectedReturnDate(data.expectedReturnDate)
+            : null,
+        impacted_player_names: intelligence?.impacted_player_names ?? [],
+        trust_level: 5, // ESPN's own data — highest trust
+        guid: dedupeGuid,
+    });
+
+    if (error) {
+        if (error.code === '23505') return false;
+        console.error('[News Service] ingestPlayerCardData error:', error);
+        return false;
+    }
+
+    console.log(`[News Service] Ingested playercard data for ${data.playerName} (status: ${data.injuryStatus ?? 'ACTIVE'})`);
+    return true;
+}
+
 export interface FreshNewsResult {
     /** How many new articles were ingested into the DB during this call */
     refreshed: number;
     /** The latest news items for this player (fresh + existing), ranked by relevance */
     items: SearchNewsItem[];
+}
+
+/**
+ * Live-first news search for a specific player.
+ *
+ * Simultaneously:
+ *   1. Queries the local DB (fast, may be stale)
+ *   2. Fetches all configured RSS feeds, ingests any new articles about the player
+ *
+ * Results from both sources are merged, deduplicated by URL/id, and sorted by
+ * publication date descending. Any articles found online are persisted to the
+ * vector store so subsequent calls are faster.
+ *
+ * This is the canonical search path — every news lookup should go through here
+ * so the knowledge base continuously grows as users query.
+ */
+export async function searchNewsWithLiveFetch(
+    playerName: string,
+    limit: number = 8,
+    options: { feedTimeoutMs?: number } = {}
+): Promise<{ items: SearchNewsItem[]; newlyIngested: number }> {
+    const query = `${playerName} injury status news update`;
+
+    // Run DB lookup and live RSS ingest in parallel — don't wait for one before the other.
+    const [dbResult, liveResult] = await Promise.allSettled([
+        searchNews(query, limit * 2),
+        fetchPlayerSpecificNews(playerName, { feedTimeoutMs: options.feedTimeoutMs ?? 5_000 }),
+    ]);
+
+    const dbItems: SearchNewsItem[] = dbResult.status === 'fulfilled' ? dbResult.value : [];
+
+    let liveItems: SearchNewsItem[] = [];
+    let newlyIngested = 0;
+    if (liveResult.status === 'fulfilled') {
+        liveItems = liveResult.value.items;
+        newlyIngested = liveResult.value.refreshed;
+    } else {
+        const msg = liveResult.reason instanceof Error ? liveResult.reason.message : String(liveResult.reason);
+        console.warn(`[News Service] searchNewsWithLiveFetch: live fetch failed — ${msg}`);
+    }
+
+    // Merge: live items take precedence (they were just ingested/re-ranked from DB).
+    const merged = new Map<string, SearchNewsItem>();
+    for (const item of [...liveItems, ...dbItems]) {
+        const key = item.id ?? item.url ?? `${item.title}-${item.published_at}`;
+        if (!key || merged.has(key)) continue;
+        merged.set(key, item);
+    }
+
+    const sorted = Array.from(merged.values())
+        .sort((a, b) => {
+            const tA = a.published_at ? new Date(a.published_at).getTime() : 0;
+            const tB = b.published_at ? new Date(b.published_at).getTime() : 0;
+            return tB - tA;
+        })
+        .slice(0, limit);
+
+    return { items: sorted, newlyIngested };
 }
 
 /**

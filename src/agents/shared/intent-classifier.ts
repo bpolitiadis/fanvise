@@ -38,10 +38,12 @@ const INTENT_PATTERNS: Array<{ intent: Exclude<QueryIntent, "general_advice">; p
   // Comprehensive team review: injuries + performers + streaming + standings.
   // Must come before matchup_analysis so "comprehensive audit... matchup status" lands here,
   // not in the narrower matchup-only branch which would skip get_free_agents.
+  // Also captures IR-slot management and multi-player injury checks — these look like
+  // lineup_optimization due to "optim" / "drop" but the actual intent is an injury audit.
   {
     intent: "team_audit",
     pattern:
-      /\b(comprehensive|full overview|complete overview|team overview|roster overview|team audit|roster audit|audit.*team|audit.*roster|best.*performer|worst.*performer|injury.*report|full.*report|overview.*team|deep.?dive.*team|deep.?dive.*roster|tell me.*team|tell me.*roster)\b/i,
+      /\b(comprehensive|full overview|complete overview|team overview|roster overview|team audit|roster audit|audit.*team|audit.*roster|best.*performer|worst.*performer|injury.*report|full.*report|overview.*team|deep.?dive.*team|deep.?dive.*roster|tell me.*team|tell me.*roster|IR slot|check.*team.*injur|injur.*team|injured.*player|day.to.day.*player|DTD.*player|return.*timeline|IR.*optim|optim.*IR)\b/i,
   },
 
   // ── matchup_analysis (SECOND — "matchup" is a strong, unambiguous signal) ──

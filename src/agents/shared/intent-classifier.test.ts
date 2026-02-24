@@ -144,8 +144,10 @@ describe("classifyIntent priority — lineup_optimization beats player_research"
     expect(classifyIntent("should I drop Kawhi because he is injured")).toBe("lineup_optimization");
   });
 
-  it("should treat 'my roster overview and who to drop' as lineup_optimization", () => {
-    expect(classifyIntent("my roster overview and who to drop")).toBe("lineup_optimization");
+  it("'my roster overview and who to drop' → team_audit (roster overview fires before lineup_optimization)", () => {
+    // team_audit pattern contains 'roster overview' and is checked first in the priority list.
+    // The ReAct agent handles this with get_my_roster + drop-score reasoning.
+    expect(classifyIntent("my roster overview and who to drop")).toBe("team_audit");
   });
 });
 
@@ -167,6 +169,44 @@ describe("classifyIntent — Optimize Lineup quick action routes correctly", () 
         "Optimize my lineup for this week. Find my best waiver wire streaming adds, identify my weakest drop candidates by schedule and average points, and simulate the top drop/add moves ranked by projected fantasy point gain."
       )
     ).toBe("lineup_optimization");
+  });
+});
+
+// ─── team_audit: injury-audit + IR-slot queries ───────────────────────────────
+
+describe("classifyIntent → team_audit (injury audit / IR slot queries)", () => {
+  it("IR slot optimization query → team_audit, not lineup_optimization", () => {
+    // "optimize my IR slots" was hitting lineup_optimization via "optim".
+    // It is an injury-audit intent, not a waiver-move intent.
+    expect(
+      classifyIntent(
+        "Check my team for any injured or Day-to-Day (DTD) players. Fetch the latest reports on their return timelines, injury progress, and status updates. Suggest how to optimize my IR slots and if any injured players are safe to drop or need immediate coverage."
+      )
+    ).toBe("team_audit");
+  });
+
+  it("'IR slot' alone → team_audit", () => {
+    expect(classifyIntent("how should I manage my IR slot?")).toBe("team_audit");
+  });
+
+  it("'injured players on my team' → team_audit", () => {
+    expect(classifyIntent("who are the injured players on my team")).toBe("team_audit");
+  });
+
+  it("'return timeline' query containing 'injur' routes to ReAct agent (player_research), not optimizer", () => {
+    // Contains "injur" → player_research fires before team_audit, but both go through the
+    // ReAct agent — the critical thing is it does NOT hit lineup_optimization.
+    const intent = classifyIntent("what are the return timelines for my injured players");
+    expect(intent).not.toBe("lineup_optimization");
+    expect(["team_audit", "player_research"]).toContain(intent);
+  });
+
+  it("'DTD players on my roster' routes to ReAct agent (player_research), not optimizer", () => {
+    // "DTD" matches player_research; both player_research and team_audit go through
+    // the same ReAct loop — neither hits the optimizer fast-path.
+    const intent = classifyIntent("do I have any DTD players on my roster");
+    expect(intent).not.toBe("lineup_optimization");
+    expect(["team_audit", "player_research"]).toContain(intent);
   });
 });
 

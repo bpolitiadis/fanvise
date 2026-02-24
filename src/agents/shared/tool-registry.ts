@@ -18,7 +18,7 @@ import { z } from "zod";
 import { EspnClient } from "@/lib/espn/client";
 import { PlayerService } from "@/services/player.service";
 import { buildIntelligenceSnapshot, fetchLeagueForTool } from "@/services/league.service";
-import { searchNews, searchPlayerStatusSnapshots, fetchPlayerSpecificNews } from "@/services/news.service";
+import { searchNews, searchNewsWithLiveFetch, searchPlayerStatusSnapshots, fetchPlayerSpecificNews, extractPlayerCardData, ingestPlayerCardData } from "@/services/news.service";
 import { ScheduleService } from "@/services/schedule.service";
 import { getPlayerGameLog } from "@/services/game-log.service";
 import {
@@ -122,32 +122,69 @@ export const getEspnPlayerStatusTool = tool(
 // ─── Tool: get_player_news ────────────────────────────────────────────────────
 
 export const getPlayerNewsTool = tool(
-  async ({ playerName, limit = 8 }: { playerName: string; limit?: number }) => {
-    const results = await searchNews(`${playerName} injury status news update`, limit);
-    return (results as Record<string, unknown>[]).map((item) => {
-      const body = (item.full_content as string) || (item.summary as string) || (item.content as string) || "";
-      const excerptLen = item.full_content ? 600 : 300;
-      return {
-      title: (item.title as string) || null,
-      summary: body.substring(0, excerptLen) + (body.length > excerptLen ? "…" : ""),
-      publishedAt: (item.published_at as string) || null,
-      source: (item.source as string) || null,
-      injuryStatus: (item.injury_status as string) || null,
-      sentiment: (item.sentiment as string) || null,
-      trustLevel: typeof item.trust_level === "number" ? item.trust_level : null,
-      url: (item.url as string) || null,
+  async ({ playerName, espnPlayerId, limit = 8 }: { playerName: string; espnPlayerId?: number; limit?: number }) => {
+    // Build parallel operations:
+    //   1. Live RSS search + ingest (always runs)
+    //   2. ESPN playercard ingest — only when espnPlayerId is provided.
+    //      kona_playercard returns structured Rotowire injury data (status, type,
+    //      expected return, season outlook) that is more authoritative than any RSS snippet.
+    const liveSearchPromise = searchNewsWithLiveFetch(playerName, limit);
+
+    const cardIngestPromise: Promise<boolean> = espnPlayerId
+      ? (async () => {
+          try {
+            const client = new EspnClient(DEFAULT_LEAGUE_ID, seasonId, sport, swid, s2);
+            const cardData = await client.getPlayerCard(espnPlayerId);
+            const players = Array.isArray(cardData?.players) ? cardData.players as Array<Record<string, unknown>> : [];
+            const playerObj = (players[0]?.player ?? {}) as Record<string, unknown>;
+            const extracted = extractPlayerCardData(playerName, espnPlayerId, playerObj);
+            if (!extracted) return false;
+            return ingestPlayerCardData(extracted);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`[get_player_news] playercard ingest failed for ${playerName}: ${msg}`);
+            return false;
+          }
+        })()
+      : Promise.resolve(false);
+
+    const [{ items, newlyIngested }, cardIngested] = await Promise.all([liveSearchPromise, cardIngestPromise]);
+
+    return {
+      newlyIngested: newlyIngested + (cardIngested ? 1 : 0),
+      articles: items.map((item) => {
+        const body = (item.full_content as string) || (item.summary as string) || (item.content as string) || "";
+        const excerptLen = item.full_content ? 600 : 300;
+        return {
+          title: (item.title as string) || null,
+          summary: body.substring(0, excerptLen) + (body.length > excerptLen ? "…" : ""),
+          publishedAt: (item.published_at as string) || null,
+          source: (item.source as string) || null,
+          injuryStatus: (item.injury_status as string) || null,
+          sentiment: (item.sentiment as string) || null,
+          trustLevel: typeof item.trust_level === "number" ? item.trust_level : null,
+          url: (item.url as string) || null,
+        };
+      }),
     };
-    });
   },
   {
     name: "get_player_news",
     description:
-      "Searches the FanVise news vector store for recent articles about a specific NBA player: " +
-      "injury reports, practice updates, role changes, trade rumors. " +
-      "Use after get_espn_player_status to get supporting context, coach quotes, and timeline details. " +
-      "Also useful for free-agent research before committing to a pickup.",
+      "Fetches the latest news about a specific NBA player by searching BOTH the FanVise knowledge base " +
+      "AND live RSS feeds (Rotowire, ESPN, Yahoo, CBS Sports, RealGM) in real time. " +
+      "When espnPlayerId is provided, also pulls structured injury data (status, type, expected return date, " +
+      "season outlook) directly from ESPN's kona_playercard endpoint and ingests it into the vector store — " +
+      "this is the most authoritative source for injury context. " +
+      "Any new articles found are automatically ingested so the knowledge base stays current. " +
+      "Use for injury context, start/sit decisions, and free-agent research. " +
+      "Since this already fetches live data, you do NOT need to call refresh_player_news separately.",
     schema: z.object({
-      playerName: z.string().describe("Full name of the NBA player"),
+      playerName: z.string().describe("Full name of the NBA player, e.g. 'Devin Booker'"),
+      espnPlayerId: z.number().optional().describe(
+        "ESPN fantasy player ID — pass when known (available from get_my_roster, get_free_agents, etc). " +
+        "Enables richer injury context from ESPN's playercard endpoint."
+      ),
       limit: z.number().optional().default(8).describe("Max news items to return (default 8)"),
     }),
   }
@@ -592,12 +629,10 @@ export const refreshPlayerNewsTool = tool(
   {
     name: "refresh_player_news",
     description:
-      "Fetches LIVE, player-specific news directly from Rotowire, ESPN, Yahoo, CBS Sports and RealGM RSS feeds right now, " +
-      "ingests any new articles into the FanVise database, and returns the latest results. " +
-      "Use this when: (1) get_player_news returned empty or stale results (no items from the last 24 h), " +
-      "(2) the user explicitly asks for 'latest' or 'breaking' news about a player, or " +
-      "(3) you are about to make a start/sit/drop recommendation for a player with a non-ACTIVE status and need to verify their current timeline. " +
-      "Do NOT call this for every query — only when freshness is critical.",
+      "NOTE: get_player_news already fetches live RSS feeds on every call. " +
+      "Use refresh_player_news only as a fallback when get_player_news returned zero results despite the player being active. " +
+      "It performs the same live RSS ingest but with extended timeouts, then returns the raw ingested count. " +
+      "Do NOT call this after get_player_news already returned results — that would be redundant.",
     schema: z.object({
       playerName: z.string().describe("Full name of the NBA player, e.g. 'Devin Booker'"),
     }),
