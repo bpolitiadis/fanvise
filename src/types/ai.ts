@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import type { MoveRecommendation } from './optimizer';
 
 /**
  * Supported AI agent personas.
@@ -28,6 +29,18 @@ export interface ChatMessage {
     content: string;
     createdAt: string;
     feedback?: 'up' | 'down' | null;
+    /**
+     * Structured move recommendations from the LineupOptimizerGraph.
+     * Present only on assistant messages that were produced by the optimizer path.
+     */
+    rankedMoves?: MoveRecommendation[];
+    /**
+     * ISO timestamp of when the optimizer data was fetched (for freshness indicator).
+     */
+    fetchedAt?: string;
+    /** Optimization window for which the moves were computed */
+    windowStart?: string;
+    windowEnd?: string;
 }
 
 /**

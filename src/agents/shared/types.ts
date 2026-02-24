@@ -44,7 +44,44 @@ export interface RosterPlayerWithSchedule {
   gamesPlayed: number
   gamesRemaining: number          // In the current matchup week
   gamesRemainingDates: string[]   // ISO dates of remaining games
-  isDropCandidate: boolean        // Low avg + few games + replaceable
+  /**
+   * Drop candidacy score (0–100). Higher = stronger drop signal.
+   * League-relative: accounts for avg fpts vs league avg, schedule gaps, and injury status.
+   * Replaces the old boolean `isDropCandidate`.
+   */
+  dropScore: number
+  dropReasons: string[]           // Human-readable factors that raised the drop score
+}
+
+/** A free agent with schedule context for streaming decisions */
+export interface FreeAgentWithSchedule {
+  playerId: string
+  playerName: string
+  position: string
+  injuryStatus: string
+  avgPoints: number
+  percentOwned: number
+  seasonOutlook: string | null
+  gamesRemaining: number          // In the current matchup week
+  gamesRemainingDates: string[]   // ISO dates of remaining games
+  /** Streaming score (0–100): avgPoints × gamesRemaining, normalized */
+  streamScore: number
+  confidence: "HIGH" | "MEDIUM" | "LOW"
+}
+
+/** Result of a simulated drop/add move */
+export interface SimulateMoveOutput {
+  isLegal: boolean
+  dropPlayerId: string
+  dropPlayerName: string
+  addPlayerId: string
+  addPlayerName: string
+  baselineWindowFpts: number
+  projectedWindowFpts: number
+  netGain: number
+  confidence: "HIGH" | "MEDIUM" | "LOW"
+  warnings: string[]
+  dailyBreakdown: { date: string; slotsUsed: string[] }[]
 }
 
 /** Matchup score summary */
