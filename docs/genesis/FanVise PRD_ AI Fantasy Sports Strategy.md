@@ -19,7 +19,7 @@
 
 **1. Executive Summary**
 
-**FanVise** is an AI-native intelligence platform for ESPN Fantasy Basketball (H2H Points). Unlike traditional tools that act as static data viewers, FanVise acts as an active **FanVise Strategist** (the data-obsessed, trash-talking friend).
+**FanVise** is an AI-native intelligence platform for ESPN Fantasy Basketball (H2H Points). Unlike traditional tools that act as static data viewers, FanVise acts as an active **General Manager** (the data-obsessed, trash-talking friend).
 
 By leveraging an **Environment-Adaptive RAG** architecture, FanVise merges **Private League Data** (Rosters, Matchups, Scoring) with **Public Real-Time Intelligence** (News, Injury Reports, Sentiment) to solve the two biggest pain points in fantasy sports: **Time Poverty** and **Information Asymmetry.**
 
@@ -30,7 +30,7 @@ By leveraging an **Environment-Adaptive RAG** architecture, FanVise merges **Pri
 **2. Product Principles**
 
 1.  **Logic Over Hype:** We do not use AI for "chit-chat." We use it to calculate probability and logistics.
-2.  **Perspective Fluidity:** The app is not hard-coded to "My Team." It is a **League Simulator** that can adopt the perspective of any manager to find their weaknesses.
+2.  **Setting-Driven Perspective:** The app is driven by the user's `leagueId` and `teamId` settings. The system can adopt the perspective of any manager (e.g., to simulate an opponent) simply by changing these settings.
 3.  **Boring Effectiveness:** The UI is dark, clean, and data-dense. We prioritize "Speed to Decision" over flashy animations.
 4.  **Data Integrity (QA First):** If the data (ESPN sync) is stale, the AI refuses to answer. Trust is the currency.
 

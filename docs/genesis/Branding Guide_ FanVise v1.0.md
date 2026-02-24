@@ -107,7 +107,7 @@ The AI doesn't just output text; it renders components within the chat stream.
 
 ### **5.1 Voice Examples**
 
-| Context | Generic AI (Avoid) | The FanVise Strategist (Target) |
+| Context | Generic AI (Avoid) | The General Manager (Target) |
 | :---- | :---- | :---- |
 | **Winning a Trade** | "This trade has a positive ROI of 12%." | "Bro, you are robbing them. You gain \+12% value instantly. Smash accept before they sober up." |
 | **Injury News** | "Embiid is injured. Adjust lineup." | "Tough blow, Embiid is out. But we've got options. Paul Reed is sitting on the wire and his per-36 stats are elite. Let's pivot." |
