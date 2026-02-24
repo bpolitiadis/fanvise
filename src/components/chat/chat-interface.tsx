@@ -165,7 +165,7 @@ export function ChatInterface() {
 
   const messages = useMemo(() => activeConversation?.messages ?? [], [activeConversation?.messages]);
   const responseLanguage: ChatLanguage = activeConversation?.language ?? "en";
-  const chatMode: ChatMode = activeConversation?.mode ?? "classic";
+  const chatMode: ChatMode = activeConversation?.mode ?? "agent";
   const isAgentMode = chatMode === "agent";
 
   const showToast = (title: string, description?: string) => {

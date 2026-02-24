@@ -57,7 +57,7 @@ const normalizeTitle = (messages: ChatMessage[]) => {
 const createConversationDraft = (
   activeTeamId: string | null,
   language: ChatLanguage,
-  mode: ChatMode = "classic"
+  mode: ChatMode = "agent"
 ): Conversation => {
   const now = new Date().toISOString();
   return {
@@ -81,7 +81,17 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     try {
       const storedConversations = localStorage.getItem(STORAGE_KEY);
       if (storedConversations) {
-        setConversations(JSON.parse(storedConversations) as Conversation[]);
+        const parsedConversations = JSON.parse(storedConversations) as Partial<Conversation>[];
+        const normalizedConversations: Conversation[] = parsedConversations.map((conversation) => ({
+          id: conversation.id ?? crypto.randomUUID(),
+          title: conversation.title ?? fallbackTitle,
+          lastMessageAt: conversation.lastMessageAt ?? new Date().toISOString(),
+          activeTeamId: conversation.activeTeamId ?? null,
+          language: conversation.language ?? "en",
+          mode: conversation.mode === "classic" || conversation.mode === "agent" ? conversation.mode : "agent",
+          messages: Array.isArray(conversation.messages) ? conversation.messages : [],
+        }));
+        setConversations(normalizedConversations);
       }
     } catch (error) {
       console.error("Failed to restore chat history", error);
@@ -115,7 +125,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createConversation = useCallback(
-    (activeTeamId: string | null, language: ChatLanguage, mode: ChatMode = "classic") => {
+    (activeTeamId: string | null, language: ChatLanguage, mode: ChatMode = "agent") => {
       const conversation = createConversationDraft(activeTeamId, language, mode);
       setConversations((prev) => [conversation, ...prev]);
       setActiveConversationId(conversation.id);
