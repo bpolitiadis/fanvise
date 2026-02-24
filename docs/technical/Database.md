@@ -5,7 +5,7 @@ FanVise uses Supabase (PostgreSQL) as its primary data store. The schema is opti
 ## Core Schema
 
 ### Leagues & Teams
-- **`leagues`**: Central repository for ESPN league metadata, including `scoring_settings`, `roster_settings`, and `draft_detail` (stored as JSONB).
+- **`leagues`**: Central repository for ESPN league metadata, including `scoring_settings`, `roster_settings`, and `draft_detail` (stored as JSONB). The `teams` JSONB array includes `wins`, `losses`, `ties`, `pointsFor`, and `pointsAgainst` per team — populated from ESPN `mTeam record.overall` on every league sync.
 - **`user_leagues`**: Junction table linking authenticated users to their specific teams and leagues.
 - **`daily_leaders`**: Per-scoring-period player performance snapshots used for "who shined yesterday?", "my team yesterday", and free-agent leader context in chat.
 - **`league_transactions`**: Stores ESPN transaction history (pickups, drops, trades).
@@ -54,4 +54,9 @@ The system uses two complementary data strategies:
 | `player_game_logs` | `player_name` | Name-based tool resolution |
 | `player_game_logs` | `game_date DESC` | Time-window queries |
 | `player_status_snapshots` | `player_name` | Status lookup by name |
-| `news_items` | `embedding vector_cosine_ops` | Semantic similarity search |
+| `player_status_snapshots` | `pro_team_id` | Schedule join in `v_streaming_candidates` |
+| `news_items` | `published_at DESC` | Date-window filter (vector RPC + lexical queries) |
+| `news_items` | `(source, published_at DESC)` | Per-source freshness queries |
+| `news_items` | `guid` | Deduplication during ingestion |
+| `news_items` | `embedding vector_cosine_ops` | Semantic similarity search (HNSW deferred to >5k rows) |
+| `nba_schedule` | `(date, home_team_id, away_team_id)` | Schedule range joins |

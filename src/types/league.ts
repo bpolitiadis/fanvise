@@ -50,6 +50,10 @@ export interface DbTeam {
     wins?: number;
     losses?: number;
     ties?: number;
+    /** Season total fantasy points scored. Populated from ESPN mTeam record.overall.pointsFor. */
+    pointsFor?: number;
+    /** Season total fantasy points allowed. Populated from ESPN mTeam record.overall.pointsAgainst. */
+    pointsAgainst?: number;
 }
 
 /**
@@ -65,4 +69,6 @@ export interface DbLeague {
     positional_ratings?: JsonObject;
     live_scoring?: JsonObject;
     teams?: DbTeam[];
+    /** ISO timestamp of the last successful ESPN sync for this league. */
+    last_updated_at?: string;
 }

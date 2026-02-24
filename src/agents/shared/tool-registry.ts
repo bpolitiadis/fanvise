@@ -355,7 +355,7 @@ export const getFreeAgentsTool = tool(
       "Set includeSchedule=true whenever the user asks about streamers, streaming pickups, or end-of-week waiver adds.",
     schema: z.object({
       limit: z.number().optional().default(20).describe("Max number of free agents to return (default 20)"),
-      positionId: z.number().optional().describe("ESPN position ID to filter by (1=PG, 2=SG, 3=SF, 4=PF, 5=C)"),
+      positionId: z.number().optional().describe("ESPN position slot ID to filter by: 0=PG, 1=SG, 2=SF, 3=PF, 4=C, 5=G, 6=F. Matches ESPN_POSITION_MAPPINGS exactly."),
       leagueId: z.string().optional().describe("The ESPN league ID from [CONTEXT] — pass when available"),
       includeSchedule: z
         .boolean()
@@ -513,7 +513,8 @@ export const getLeagueStandingsTool = tool(
       .sort((a, b) => {
         const wDiff = (b.wins ?? 0) - (a.wins ?? 0);
         if (wDiff !== 0) return wDiff;
-        return (a.losses ?? 0) - (b.losses ?? 0);
+        // Tiebreak by points for (descending)
+        return (b.pointsFor ?? 0) - (a.pointsFor ?? 0);
       })
       .map((team, idx) => ({
         rank: idx + 1,
@@ -523,6 +524,8 @@ export const getLeagueStandingsTool = tool(
         wins: team.wins ?? 0,
         losses: team.losses ?? 0,
         ties: team.ties ?? 0,
+        pointsFor: team.pointsFor ?? 0,
+        pointsAgainst: team.pointsAgainst ?? 0,
         isUserTeam: team.is_user_owned ?? false,
       }));
 
@@ -531,13 +534,20 @@ export const getLeagueStandingsTool = tool(
       leagueId: dbLeague.league_id,
       leagueName: dbLeague.name,
       season: dbLeague.season_id,
+      // Explicit data source metadata so the LLM can reason about freshness.
+      // get_team_season_stats reads live from ESPN; this tool reads the DB cache.
+      // Both are backed by the same ESPN sync — last sync time shown below.
+      dataSource: "DB_CACHE" as const,
+      lastSyncedAt: dbLeague.last_updated_at ?? null,
       standings,
     };
   },
   {
     name: "get_league_standings",
     description:
-      "Returns the current league standings (win/loss record, rank) for every team in the fantasy league, sorted by wins. " +
+      "Returns the current league standings (win/loss record, points for/against, rank) for every team, sorted by wins then points scored. " +
+      "Data source: FanVise DB cache (synced each time the league is refreshed — check lastSyncedAt in the response). " +
+      "For live season-aggregate stats (PF, PA, transaction counts) use get_team_season_stats instead. " +
       "Use this when the user asks about standings, playoff picture, who is in first place, or needs a league-wide context for trade/strategy decisions. " +
       "Also use when the user asks 'where am I in the standings?' or 'how does my record compare to others?'",
     schema: z.object({
@@ -803,7 +813,9 @@ export const getTeamSeasonStatsTool = tool(
     description:
       "Returns season-aggregate stats for every team in the league: total points scored (PF), points allowed (PA), " +
       "point differential, win/loss record, and waiver-wire activity counts (acquisitions, drops, trades). " +
-      "Sorted by points scored (highest first). " +
+      "Data source: live ESPN API (always current). Sorted by points scored (highest first). " +
+      "Prefer this over get_league_standings when the user specifically asks about points totals, scoring volume, " +
+      "or waiver activity. " +
       "Use this when the user asks: 'who is the highest-scoring team?', 'who has been most active on the wire?', " +
       "'compare team strengths for a trade', 'who has the best/worst point differential?', or any question about season-level team performance.",
     schema: z.object({}),
@@ -866,16 +878,24 @@ export const simulateMoveTool = tool(
       gamesPlayed: p.gamesPlayed ?? 0,
     }));
 
+    // Resolve the drop player's actual injury status from the live roster snapshot.
+    // Hardcoding "ACTIVE" previously caused the optimizer to over-estimate the
+    // baseline window (it projected games for an injured player as if they were healthy).
+    const dropPlayerRosterEntry = (snapshot.myTeam.roster ?? []).find(
+      (p) => Number(p.id) === dropPlayerId
+    );
+    const resolvedDropInjuryStatus = dropPlayerRosterEntry?.injuryStatus ?? "ACTIVE";
+
     const dropPlayer: OptimizerRosterPlayer = {
       playerId: dropPlayerId,
       playerName: dropPlayerName,
       position: dropPosition,
       eligibleSlots: [dropPosition],
       proTeamId: dropProTeamId,
-      injuryStatus: "ACTIVE",
+      injuryStatus: resolvedDropInjuryStatus,
       avgFpts: dropAvgPoints,
-      totalFpts: 0,
-      gamesPlayed: 0,
+      totalFpts: dropPlayerRosterEntry?.totalPoints ?? 0,
+      gamesPlayed: dropPlayerRosterEntry?.gamesPlayed ?? 0,
     };
 
     const addPlayer: OptimizerFreeAgentPlayer = {

@@ -95,7 +95,7 @@ const normalizeExpectedReturnDate = (value: string | null): string | null => {
 
 // RSS Feeds
 // RSS Feeds with Trust Ranking
-const FEEDS = [
+const ALL_FEEDS = [
     { source: 'ESPN', url: 'https://www.espn.com/espn/rss/nba/news', trust_level: 5 },
     { source: 'Rotowire', url: 'https://www.rotowire.com/rss/news.php?sport=NBA', trust_level: 4 },
     { source: 'Yahoo', url: 'https://sports.yahoo.com/nba/rss.xml', trust_level: 5 },
@@ -106,9 +106,12 @@ const FEEDS = [
     // { source: 'FantasyPros NBA', url: 'https://partners.fantasypros.com/api/v1/rss-feed.php?sport=NBA', trust_level: 4 }, // 404 Not Found
     // { source: 'Razzball', url: 'https://basketball.razzball.com/feed', trust_level: 3 }, // 403 Forbidden (Cloudflare)
     { source: 'SportsEthos', url: 'https://sportsethos.com/tag/fantasy-basketball/feed', trust_level: 3 },
-    // Placeholder URL for Underdog NBA - User needs to replace this
-    { source: 'Underdog NBA', url: 'https://rss.app/feeds/UNDERDOG_NBA_PLACEHOLDER.xml', trust_level: 4 }
+    // Set UNDERDOG_NBA_RSS_URL in env to activate this feed
+    { source: 'Underdog NBA', url: process.env.UNDERDOG_NBA_RSS_URL ?? '', trust_level: 4 }
 ];
+
+// Skip feeds whose URL is empty or still a placeholder — avoids parse errors on every sync cycle.
+const FEEDS = ALL_FEEDS.filter(f => f.url && !f.url.includes('PLACEHOLDER'));
 
 // Initialize Supabase with Service Role Key (preferred) or Anon Key (fallback for dev)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -623,30 +626,44 @@ export async function backfillNews(watchlist: string[] = [], pages: number = 3) 
 }
 
 export async function searchNews(query: string, limit = 15) {
-    if (!process.env.GOOGLE_API_KEY) {
-        console.warn("GOOGLE_API_KEY missing, skipping news search");
-        return [];
+    const canEmbed = Boolean(process.env.GOOGLE_API_KEY);
+    if (!canEmbed) {
+        console.warn("[News Service] GOOGLE_API_KEY missing — vector search disabled, falling back to lexical-only.");
     }
 
     try {
         const searchIntent = getSearchIntent(query);
 
-        // 1. Embed query for vector retrieval
-        const embedding = await getEmbedding(query);
-        console.log(`Searching news with embedding (dim: ${embedding.length}) for: "${query.substring(0, 30)}..."`);
+        // 1. Embed query for vector retrieval (skipped gracefully when API key is absent)
+        let embedding: number[] | null = null;
+        if (canEmbed) {
+            try {
+                embedding = await getEmbedding(query);
+                console.log(`Searching news with embedding (dim: ${embedding.length}) for: "${query.substring(0, 30)}..."`);
+            } catch (embedErr) {
+                const msg = embedErr instanceof Error ? embedErr.message : String(embedErr);
+                console.warn(`[News Service] Embedding failed, falling back to lexical-only: ${msg}`);
+                embedding = null;
+            }
+        }
 
-        // 2. Vector retrieval via RPC (Adaptive window: 30 days for injury, 14 days for general)
+        // 2. Vector retrieval via RPC — only when an embedding was successfully generated
         const daysBack = searchIntent.isInjuryQuery ? 30 : 14;
+        let vectorData: unknown[] | null = null;
 
-        const { data: vectorData, error: vectorError } = await supabase.rpc('match_news_documents', {
-            query_embedding: embedding,
-            match_threshold: 0.25, // Slightly lower threshold to be more inclusive
-            match_count: Math.max(limit * 2, 20),
-            days_back: daysBack
-        });
+        if (embedding) {
+            const { data, error: vectorError } = await supabase.rpc('match_news_documents', {
+                query_embedding: embedding,
+                match_threshold: 0.25,
+                match_count: Math.max(limit * 2, 20),
+                days_back: daysBack
+            });
 
-        if (vectorError) {
-            console.error("Supabase RPC match_news_documents error:", vectorError);
+            if (vectorError) {
+                console.error("Supabase RPC match_news_documents error:", vectorError);
+            } else {
+                vectorData = data;
+            }
         }
 
         // 3. Lightweight lexical retrieval fallback (hybrid behavior without DB migration)

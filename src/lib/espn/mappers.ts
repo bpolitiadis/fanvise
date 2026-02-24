@@ -16,6 +16,8 @@ export interface ParsedLeagueTeam {
     wins: number;
     losses: number;
     ties: number;
+    pointsFor: number;
+    pointsAgainst: number;
     manager: string;
     is_user_owned: boolean;
 }
@@ -85,6 +87,8 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
             wins: t.record?.overall?.wins || 0,
             losses: t.record?.overall?.losses || 0,
             ties: t.record?.overall?.ties || 0,
+            pointsFor: Math.round((t.record?.overall?.pointsFor ?? 0) * 100) / 100,
+            pointsAgainst: Math.round((t.record?.overall?.pointsAgainst ?? 0) * 100) / 100,
             manager: member
                 ? `${member.firstName || ""} ${member.lastName || ""}`.trim() || member.displayName || "Unknown"
                 : "Unknown",

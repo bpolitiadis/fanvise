@@ -46,5 +46,24 @@ Every ingested article is processed by the AI Service to extract structured meta
 
 During a chat session, the system performs a semantic search using the user's query.
 - **Embedding Model**: Defaults to `gemini-embedding-001` (Gemini) or `nomic-embed-text` (Local).
-- **Match Strategy**: Uses Cosine Similarity via the `match_news_documents` RPC.
+- **Match Strategy**: Hybrid — cosine similarity via `match_news_documents` RPC **plus** lexical keyword search merged and re-ranked by `computeHybridScore`.
+- **Graceful Degradation**: If `GOOGLE_API_KEY` is absent or the embedding provider fails, the vector step is skipped and the search falls back to lexical-only. The pipeline never returns an empty result set solely because an API key is missing.
 - **Grounding Rules**: The **General Manager** persona is instructed to ignore its pre-trained knowledge and *only* use the retrieved intelligence items to form responses. Trash talk remains data-anchored to prevent hallucinations.
+
+### Hybrid Score Weights
+
+| Signal | Weight |
+|--------|--------|
+| Vector similarity | 50% |
+| Keyword match | 20% |
+| Player name match | 20% |
+| Recency (0 after 7 days) | 7% |
+| Source trust level | 3% |
+
+### Database Indexes
+
+The `news_items` table has the following performance indexes:
+- `idx_news_items_published_at (published_at DESC)` — accelerates the date-window filter in all news queries.
+- `idx_news_items_source_published_at (source, published_at DESC)` — accelerates per-source recency queries.
+- `news_items_guid_idx (guid)` — deduplication during ingestion.
+- HNSW index on `embedding` deferred until table exceeds ~5k rows (Supabase best practice).
