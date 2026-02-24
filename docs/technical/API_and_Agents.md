@@ -1,37 +1,43 @@
 # API Services & AI Agents
 
-The intelligence of FanVise is powered by a **Dual-Mode AI Architecture**. Users can seamlessly toggle between a lightning-fast "Classic" RAG pipeline and a deliberate, autonomous "Agentic" reasoning mode.
+FanVise currently supports a **dual-mode AI architecture**:
+- **Classic mode** (`POST /api/chat`): single-pass RAG pipeline for fast, reliable strategy answers.
+- **Agentic mode** (`POST /api/agent/chat`): LangGraph supervisor with tool-calling for deeper, iterative analysis.
 
-## 1. Classic Mode (Single-Pass RAG)
-**Endpoint**: `POST /api/chat`
+## 1. Classic Mode (`POST /api/chat`)
 
-Classic mode is the default. It leverages the `IntelligenceService` (`src/services/intelligence.service.ts`) to execute a highly optimized, single-pass pipeline:
-1. **Context Building**: The `LeagueService` builds a snapshot of the user's specific fantasy environment (rosters, matchups).
-2. **RAG Retrieval**: The `NewsService` fetches the latest relevant news and injury reports from Supabase `pgvector`.
-3. **Prompt Injection**: The `Prompt Engine` (`src/prompts/index.ts`) formats all this data into the strict "FanVise Strategist" system prompt.
-4. **Streaming Execution**: The payload is sent to the Large Language Model via `AIService` and streamed back to the client immediately.
+Classic mode delegates to the `IntelligenceService` (`src/services/intelligence.service.ts`) and follows a deterministic orchestration path:
+1. **RAG Retrieval**: `NewsService` fetches relevant news and injury reports.
+2. **Context Building**: `LeagueService` builds a league/team snapshot.
+3. **Daily Leaders Context**: `buildDailyLeadersContext` adds scoring-period context when relevant ("who shined yesterday?", "my team yesterday").
+4. **Prompt Engineering**: `prompts/index.ts` constructs the grounded system prompt.
+5. **Generative Execution**: `AIService` streams the answer back to the client.
 
-*Use Case*: "Who should I start tonight?" or "Summarize today's news."
+## 2. Agentic Mode (`POST /api/agent/chat`)
 
-## 2. Agentic Mode (LangGraph)
-**Endpoint**: `POST /api/agent/chat`
+Agentic mode uses the supervisor graph (`src/agents/supervisor/agent.ts`) to choose tools dynamically based on the user query.
 
-Agentic mode uses LangGraph (`src/agents/supervisor/agent.ts`) to orchestrate autonomous agents. Instead of a single pass, the AI acts as a **Supervisor**, dynamically deciding which tools and sub-agents to invoke.
+This mode is best for deep-dive questions where the model must combine multiple lookups and reasoning steps before answering.
 
-The Supervisor has access to specialized tools (registered in `src/agents/shared/tool-registry.ts`), such as:
-- **Player Research Agent**: Can actively scrape live web sources or execute multiple database queries iteratively to build a comprehensive profile on a player before answering.
+## Chat Route Behavior (Both Endpoints)
 
-*Use Case*: "Do a deep dive on Tyrese Maxey's injury and tell me if I should drop him." The agent will actively search for live updates before synthesizing a strategy.
+Both chat routes apply the same core safety and delivery patterns:
+- **Perspective authorization** through `authorizePerspectiveScope` (`src/utils/auth/perspective-authorization.ts`) before building league/team context.
+- **Stream heartbeat token** (`[[FV_STREAM_READY]]`) so clients/proxies receive immediate bytes during slow context assembly or local model startup.
+- **Eval mode support** (`evalMode=true`) with structured debug output in development workflows.
 
 ## Core Foundation Services
 
-Regardless of the mode, the AI relies on these foundational services:
+- **AI Service (`src/services/ai.service.ts`)**: Provider-agnostic model gateway for streaming, embeddings, and environment-based routing (Gemini or Ollama).
+- **Prompt Engine (`prompts/index.ts`)**: Builds strict, context-grounded strategist instructions.
+- **League Service (`src/services/league.service.ts`)**: Aggregates ESPN + Supabase data into an intelligence snapshot.
+- **News Service (`src/services/news.service.ts`)**: Manages ingestion, intelligence extraction, and vector retrieval.
+- **Daily Leaders Service (`src/services/daily-leaders.service.ts`)**: Provides per-period performance context for chat and sync flows.
 
-- **AI Service (`src/services/ai.service.ts`)**: The gateway for model interactions. Handles streaming responses and safely toggles between **Google Gemini** (Cloud) and **Ollama** (Local).
-- **Prompt Engine (`src/prompts/index.ts`)**: Defines the "FanVise Strategist" persona. It heavily enforces **Strict Truth Anchoring**, requiring the AI to only use provided news and roster data without hallucinating stats.
-- **League Service (`src/services/league.service.ts`)**: Aggregates ESPN API data and Supabase records into the unified "Intelligence Snapshot".
+## Evaluation Agent (Standalone)
 
-## Local Environment Note
-
-Agentic mode relies heavily on **Tool Calling** (Function Calling). 
-If you are developing locally with Ollama, you **must** use a model that supports robust tool calling (e.g., `llama3.1`). Standard models or reasoning models like `deepseek-r1` will fail significantly when trying to act as a LangGraph node. If Agentic mode behaves erratically, fallback to Gemini (`USE_LOCAL_AI=false`).
+`fanvise_eval/test_fanvise.py` runs black-box checks against `/api/chat`:
+- Sends prompts from `fanvise_eval/golden_dataset.json`.
+- Captures output and optional `debug_context`.
+- Applies deterministic policy/math checks.
+- Applies optional LLM-judge metrics via `FANVISE_JUDGE_PROVIDER`.

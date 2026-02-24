@@ -1,6 +1,6 @@
 # FanVise Documentation
 
-Welcome to the FanVise documentation hub. Look here for detailed information about the product vision, architecture, and technical implementation.
+Welcome to the FanVise documentation hub. Here you will find detailed information about the product vision, architecture, and technical implementation.
 
 ## 📜 Genesis & Product Vision
 Understanding the *why* and *what* of FanVise.
@@ -8,19 +8,20 @@ Understanding the *why* and *what* of FanVise.
 *   **[Product Requirements Document (PRD)](./genesis/FanVise%20PRD_%20AI%20Fantasy%20Sports%20Strategy.md)**
     *   Defines the core value proposition: "The Intelligent Edge for Fantasy Basketball."
     *   Outlines the "FanVise Strategist" persona and "Perspective Engine."
+    *   Details the pivot to a Dual-Environment Architecture (Next.js + Supabase).
 
 ## 🛠️ Technical Documentation
 Deep dives into the system architecture and implementation details.
 
 ### Architecture & Design
-*   **[System Architecture](./technical/Architecture.md)**: High-level overview of the Next.js, Supabase, and dual-mode AI integration. It also covers the differences between the Google Gemini and Ollama environments.
+*   **[System Architecture](./technical/Architecture.md)**: High-level overview of the Next.js, Supabase, and AI integration.
 *   **[RAG Pipeline](./technical/RAG_Pipeline.md)**: How news retrieval, embedding, and generation works.
 *   **[Database Schema](./technical/Database.md)**: Supabase Postgres schema design.
 *   **[Daily Leaders Storage Design](./technical/Daily_Leaders_Storage_Design.md)**: Daily leaders data model, ESPN ingestion strategy, and chatbot integration notes.
 *   **[UI & Branding](./technical/UI_and_Branding.md)**: Design system, components, and theming.
 
 ### Agents & Intelligence
-*   **[API & Agents](./technical/API_and_Agents.md)**: How the app routes AI queries, explaining the difference between Classic Mode (Single-Pass RAG) and Agentic Mode (LangGraph Supervisor).
+*   **[API & Agents](./technical/API_and_Agents.md)**: How chat endpoints, core services, and AI orchestration work.
 *   **[Player Research Agent](./technical/Player_Research_Agent.md)**: Details on the first active tool-calling agent.
 *   **[Lineup Optimization Flow](./technical/Lineup_Optimization_Flow.md)**: End-to-end spec for the matchup optimizer.
 *   **[Rate Limiting Strategy](./technical/rate-limiting-ai-strategy.md)**: Strategies for managing LLM API costs and limits.
