@@ -4,79 +4,70 @@ FanVise is an AI-native fantasy sports intelligence platform designed as a "Stra
 
 ## High-Level Overview
 
-The system acts as a strategic co-manager for ESPN Fantasy Basketball. It aggregates structured data (league rosters, scoring) and unstructured intelligence (news, injury reports) to provide contextually grounded strategic advice.
+The system acts as a strategic co-manager for ESPN Fantasy Basketball. It aggregates structured data (league rosters, scoring) and unstructured intelligence (news, injury reports) to provide contextually grounded strategic advice. It employs a **Dual-Environment Architecture**, offering both high-performance cloud inference and privacy-focused local models.
 
 ```mermaid
 graph TD
     User((User)) -->|Iteract| WebUI[Next.js App Router]
     
     subgraph "Next.js Application (Vercel/Node.js)"
-        WebUI --> API[API Routes / Server Actions]
-        API --> IntelligenceSvc[Intelligence Service]
+        WebUI --> API_Classic[Classic: /api/chat]
+        WebUI --> API_Agent[Agentic: /api/agent/chat]
+        
+        API_Classic --> IntelligenceSvc[Intelligence Service]
+        API_Agent --> Supervisor[LangGraph Supervisor]
+        
         IntelligenceSvc --> Orchestrator[AI Service]
+        Supervisor --> Orchestrator[AI Service]
+        
         IntelligenceSvc --> LeagueSvc[League/Team Context Service]
         IntelligenceSvc --> RAG[RAG Pipeline/News Service]
     end
     
     subgraph "Intelligence Providers"
-        Orchestrator --> Gemini[Google Gemini 2.0 Flash]
+        Orchestrator --> Gemini[Cloud: Google Gemini 2.0]
         Orchestrator -.-> Ollama[Local: Llama 3.1 / Ollama]
     end
     
     subgraph "Data & Persistence"
         RAG --> SupabaseVector[Supabase pgvector]
         LeagueSvc --> SupabaseDB[Supabase Postgres]
-        API --> ESPN[ESPN Private API]
     end
 ```
 
-## Key Architectural Principles
+## Dual-Mode AI Execution
+The system provides two discrete AI execution paths:
 
-1. **Perspective Engine**: The core logic is decoupled from a single user's team. The system can adopt the "perspective" of any team in a league to analyze strengths and weaknesses.
-2. **AI-First Orchestration**: The AI is not a separate feature but the primary interface for decision-making.
-3. **Hybrid RAG**: Combines structured league data (rosters, scoring) with unstructured news and intelligence (injury reports, trade rumors).
-4. **Edge Readiness**: Built on Next.js 15+ with Tailwind CSS v4, optimized for low latency and responsive interactions.
+1. **Classic Mode (`/api/chat`)**: A single-pass Retrieval-Augmented Generation (RAG) pipeline. This is the fastest, most reliable mode for general queries ("who should I start?"). 
+2. **Agentic Mode (`/api/agent/chat`)**: Uses LangGraph to orchestrate autonomous agents with tool-calling capabilities (e.g., Live Player Research). Best for deep dives where the AI needs to iteratively search live web feeds or perform multiple data lookups.
 
-## Deployment Stack
+## Models & Environments
 
-- **Frontend/Backend**: Next.js (Deployed on Vercel)
-- **Database/Auth**: Supabase (PostgreSQL + pgvector)
-- **AI Models**: Google Gemini 2.0 Flash (via Google Generative AI SDK)
-- **Data Ingestion**: Custom TypeScript clients for ESPN and RSS scraping.
+The application routes requests via the `AI Service` to either cloud or local models, controlled by environment variables.
+
+### 1. Google Gemini (Cloud)
+Used for production and high-scale intelligence extraction.
+- **Core Model**: `gemini-2.0-flash` (Optimized for speed/latency).
+- **Embedding Model**: `gemini-embedding-001`.
+- **Requirements**: Requires `GOOGLE_API_KEY`.
+
+### 2. Ollama (Local)
+Used for local development or private deployments.
+- **Core Model**: `llama3.1` (Recommended). *Note: Tool-calling is required for Agentic mode, so models like `deepseek-r1` are fundamentally incompatible.*
+- **Embedding Model**: `nomic-embed-text`.
+- **Requirements**: Set `USE_LOCAL_AI=true`.
+
+*Tip: If the local Ollama model hallucinates roster data or invents NBA scorelines, retry the prompt or switch back to Gemini for higher fidelity.*
 
 ## Sync Orchestration
 
-FanVise now separates league synchronization from news intelligence ingestion so costly AI/pgvector writes only happen on explicit paths.
+FanVise separates league synchronization from news intelligence ingestion:
 
-- **Scheduled News Sync (automatic, restricted):**
-  - Route: `GET /api/cron/news`
-  - Scope: **news-only** ingestion (`fetchAndIngestNews`) with Gemini extraction/embeddings.
-  - Guardrails: production-only, optional `CRON_SECRET`, and strict UTC windows (`11:00` and `22:00`).
-  - Trigger: GitHub Actions workflow `.github/workflows/news-ingest-cron.yml`.
+- **News Sync**: Pulls RSS feeds, uses Gemini to extract structured insight, and embeds into `pgvector` (`GET /api/cron/news` or `POST /api/news/sync`).
+- **League Sync**: Replicates ESPN rosters, matchups, and scorelines down to the Supabase Postgres instance (`POST /api/sync`).
 
-- **Manual News Sync (operator action):**
-  - Route: `POST /api/news/sync`
-  - Scope: **news-only** ingestion/backfill.
-  - Guardrails: requires explicit intent header `x-fanvise-sync-intent: manual-news-sync`.
-  - UI: Dashboard `Sync News` button with last-sync label.
-
-- **League Sync (separate from news):**
-  - Routes: `POST /api/sync`, `POST /api/sync/player-status`, `POST /api/sync/daily-leaders`
-  - Scope: ESPN league metadata, transactions, player status snapshots, and daily leaders.
-  - Single-league mode: league/season are read from `NEXT_PUBLIC_ESPN_LEAGUE_ID` and `NEXT_PUBLIC_ESPN_SEASON_ID`.
-  - Note: daily leaders sync now performs a best-effort schedule sync if no scoring period can be resolved yet.
-  - UI: Dashboard `Sync League` button.
-
-## Production Mode Notes (Current)
-
-- **Current live mode**: single-league, env-driven perspective (not full multi-user `profiles`/`user_leagues` flow).
-- **Public perspective fallback**: enabled via `ALLOW_PUBLIC_PERSPECTIVE_FALLBACK=true` to keep chat context available without auth mappings.
-- **Gemini retry cap**: `RETRY_MAX_DELAY_MS` is used to prevent long 429 backoffs from causing runtime hangs.
-
-## Rollback / Future Reversal
-
-When multi-user auth is fully implemented in production, revert this temporary single-league posture:
-
-1. Set `ALLOW_PUBLIC_PERSPECTIVE_FALLBACK=false`.
-2. Keep `user_leagues` populated for authenticated users and enforce membership-only perspective.
-3. Optionally remove first-team fallback defaults in client perspective resolution.
+## Tech Stack Overview
+- **Framework**: Next.js 16 (App Router)
+- **Database/Auth**: Supabase (PostgreSQL + pgvector + SSR Email/Google Auth)
+- **Styling**: Tailwind CSS v4, shadcn/ui
+- **AI Tooling**: Google Generative AI SDK, LangGraph.js, LangChain Core
