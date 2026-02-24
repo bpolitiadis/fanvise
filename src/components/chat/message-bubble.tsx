@@ -22,6 +22,7 @@ import { motion } from "framer-motion";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { ChatMessage } from "@/types/ai";
+import { MoveCards } from "./move-card";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -38,6 +39,8 @@ interface MessageBubbleProps {
     totalMs: number;
     firstTokenMs: number | null;
   };
+  /** Active league ID — used to build the ESPN deep-link URL on move cards */
+  leagueId?: string | null;
   onCopy: (value: string) => void;
   onEditSubmit: (messageId: string, nextValue: string) => void;
   onFeedback: (messageId: string, feedback: "up" | "down") => void;
@@ -48,6 +51,7 @@ export function MessageBubble({
   message,
   costEstimate,
   timingEstimate,
+  leagueId,
   onCopy,
   onEditSubmit,
   onFeedback,
@@ -324,6 +328,17 @@ export function MessageBubble({
                 {markdownContent}
               </ReactMarkdown>
             </div>
+            {/* Structured move recommendation cards — rendered for optimizer responses */}
+            {!isUser && message.rankedMoves && message.rankedMoves.length > 0 && (
+              <MoveCards
+                moves={message.rankedMoves}
+                fetchedAt={message.fetchedAt ?? new Date().toISOString()}
+                windowStart={message.windowStart}
+                windowEnd={message.windowEnd}
+                leagueId={leagueId}
+              />
+            )}
+
             {!isUser && formattedCostLine && (
               <p className="mt-3 text-[11px] text-muted-foreground/90">{formattedCostLine}</p>
             )}

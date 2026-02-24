@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Bot,
   Cpu,
+  Scissors,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -26,6 +27,7 @@ import {
   type ChatMode,
 } from "@/components/chat/chat-history-context";
 import type { ChatLanguage, ChatMessage } from "@/types/ai";
+import type { MovesStreamPayload } from "@/types/optimizer";
 
 interface ToastState {
   id: string;
@@ -49,7 +51,31 @@ interface ResponseTimingEstimate {
 }
 
 const STREAM_HEARTBEAT_TOKEN = "[[FV_STREAM_READY]]";
+const MOVES_TOKEN_PREFIX = "[[FV_MOVES:";
+const MOVES_TOKEN_SUFFIX = "]]";
 const CHARS_PER_TOKEN_ESTIMATE = 4;
+
+/**
+ * Extracts and decodes the `[[FV_MOVES:BASE64]]` sentinel token from a stream chunk.
+ * Returns the decoded payload and the chunk with the token stripped out.
+ */
+function extractMovesToken(text: string): { cleaned: string; payload: MovesStreamPayload | null } {
+  const start = text.indexOf(MOVES_TOKEN_PREFIX);
+  if (start === -1) return { cleaned: text, payload: null };
+
+  const end = text.indexOf(MOVES_TOKEN_SUFFIX, start + MOVES_TOKEN_PREFIX.length);
+  if (end === -1) return { cleaned: text, payload: null };
+
+  const base64 = text.slice(start + MOVES_TOKEN_PREFIX.length, end);
+  const cleaned = text.slice(0, start) + text.slice(end + MOVES_TOKEN_SUFFIX.length);
+
+  try {
+    const payload = JSON.parse(atob(base64)) as MovesStreamPayload;
+    return { cleaned, payload };
+  } catch {
+    return { cleaned, payload: null };
+  }
+}
 const GEMINI_FLASH_INPUT_USD_PER_MILLION = 0.1;
 const GEMINI_FLASH_OUTPUT_USD_PER_MILLION = 0.4;
 
@@ -289,21 +315,52 @@ export function ChatInterface() {
 
     let assistantMessage = "";
     let firstTokenMs: number | null = null;
+    let movesPayload: MovesStreamPayload | null = null;
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const text = new TextDecoder().decode(value);
-      const sanitizedText = text.replaceAll(STREAM_HEARTBEAT_TOKEN, "");
-      if (!sanitizedText) continue;
+      const rawText = new TextDecoder().decode(value);
+
+      // Strip the stream heartbeat token first
+      let text = rawText.replaceAll(STREAM_HEARTBEAT_TOKEN, "");
+      if (!text) continue;
+
+      // Extract and strip the moves sentinel token if present
+      if (text.includes(MOVES_TOKEN_PREFIX)) {
+        const { cleaned, payload } = extractMovesToken(text);
+        text = cleaned;
+        if (payload) movesPayload = payload;
+      }
+
+      if (!text) continue;
+
       if (firstTokenMs === null) {
         firstTokenMs = performance.now() - requestStartTime;
       }
-      assistantMessage += sanitizedText;
+      assistantMessage += text;
+
       persistMessages(conversationId, [
         ...requestMessages,
         { ...assistantDraft, content: assistantMessage },
       ]);
     }
+
+    // Once stream is complete, attach structured moves to the message if present
+    if (movesPayload) {
+      persistMessages(conversationId, [
+        ...requestMessages,
+        {
+          ...assistantDraft,
+          content: assistantMessage,
+          rankedMoves: movesPayload.moves,
+          fetchedAt: movesPayload.fetchedAt,
+          windowStart: movesPayload.windowStart,
+          windowEnd: movesPayload.windowEnd,
+        },
+      ]);
+    }
+
     const totalMs = performance.now() - requestStartTime;
 
     setMessageCostById((prev) => ({
@@ -552,6 +609,24 @@ export function ChatInterface() {
               <span className="text-[11px] text-muted-foreground">Return timelines & IR optimization</span>
             </div>
           </Button>
+
+          <Button
+            variant="outline"
+            className="group h-14 justify-start gap-3 rounded-2xl border-primary/10 px-6 transition-all hover:border-primary/30 hover:bg-primary/5"
+            onClick={() =>
+              handleQuickAction(
+                "Optimize my lineup for this week. Find my best waiver wire streaming adds, identify my weakest drop candidates by schedule and average points, and simulate the top drop/add moves ranked by projected fantasy point gain."
+              )
+            }
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500/20">
+              <Scissors className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-sm font-bold">Optimize Lineup</span>
+              <span className="text-[11px] text-muted-foreground">Simulate drop/add moves ranked by fpts gain</span>
+            </div>
+          </Button>
         </div>
       </motion.div>
     );
@@ -572,6 +647,7 @@ export function ChatInterface() {
                 message={message}
                 costEstimate={messageCostById[message.id]}
                 timingEstimate={messageTimingById[message.id]}
+                leagueId={activeLeagueId}
                 onFeedback={handleFeedback}
                 onCopy={handleCopy}
                 onToast={showToast}
