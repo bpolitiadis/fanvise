@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createTypedClient } from "@/utils/supabase/client";
 
@@ -34,8 +35,18 @@ import { DevLoginButton } from "@/components/auth/dev-login-button";
 
 function LoginContent() {
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (error) {
+      toast.error(
+        error === "auth_callback_failed"
+          ? "Authentication failed. Please try again or check your Supabase redirect URLs."
+          : "An error occurred. Please try again."
+      );
+    }
+  }, [searchParams]);
 
   const nextPath = useMemo(() => {
     const candidate = searchParams.get("next");
@@ -45,18 +56,15 @@ function LoginContent() {
 
   const startGoogleSignIn = async () => {
     setIsRedirecting(true);
-    setErrorMessage(null);
-
     const supabase = createTypedClient();
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
     });
-
     if (error) {
       setIsRedirecting(false);
-      setErrorMessage(error.message);
+      toast.error(error.message);
     }
   };
 
@@ -103,12 +111,6 @@ function LoginContent() {
           <EmailAuthForm />
         </div>
 
-        {(searchParams.get("error") || errorMessage) && (
-          <p className="mt-4 text-center text-sm text-destructive">
-            {errorMessage ??
-              "Authentication failed. Please try again or check your Supabase redirect URLs."}
-          </p>
-        )}
       </div>
 
       <DevLoginButton />

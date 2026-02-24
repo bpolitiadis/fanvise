@@ -23,3 +23,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **League cache key** — `unstable_cache` now includes `leagueId`, `teamId`, `seasonId` to prevent cross-user roster leakage.
 - **Perspective auth** — Authenticated users resolve team from `user_leagues` or `user_settings`; no env fallback for wrong teams.
+
+### Added — Auth Flow Refactor (2026-02-24)
+
+- **Protected routes** — `/chat`, `/optimize`, `/league` added to middleware protection. Centralized `PROTECTED_PATH_PREFIXES`.
+- **Shared logout** — `src/utils/auth/logout.ts` with `signOutAndRedirect()` for consistent session cleanup.
+- **Auth tests** — Playwright API tests (callback redirects, protected route, login page); E2E tests (login, logout, dashboard, guards); auth setup via Dev Login.
+- **Auth UX** — Toast notifications for errors; `sanitizeAuthError()`; `Label` component; dev login respects `next` param.
+
+### Fixed — Auth (2026-02-24)
+
+- **Middleware** — Removed redundant `request.cookies.set` in `setAll`; cookie options correctly applied on response.
+- **Email auth** — Signup `emailRedirectTo` now encodes `next` path; error handling sanitizes messages.

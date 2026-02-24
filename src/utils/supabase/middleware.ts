@@ -3,6 +3,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/supabase";
 import { getSupabasePublishableKey, getSupabaseUrl } from "@/utils/supabase/env";
 
+/** Routes requiring authenticated user. Unauthenticated requests redirect to /login. */
+export const PROTECTED_PATH_PREFIXES = ["/", "/dashboard", "/settings", "/chat", "/optimize", "/league"] as const;
+
+/** Paths that should redirect to home when user is already authenticated (e.g. login). */
+const AUTH_PATHS = ["/login"] as const;
+
+/**
+ * Refreshes the Supabase session (if needed) and enforces route protection.
+ * Must return the response object that may have updated cookies from token refresh.
+ */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -15,7 +25,6 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -44,7 +53,8 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isProtectedRoute =
-    pathname === "/" || pathname.startsWith("/dashboard") || pathname.startsWith("/settings");
+    pathname === "/" ||
+    PROTECTED_PATH_PREFIXES.some((p) => p !== "/" && pathname.startsWith(p));
   if (!user && isProtectedRoute) {
     const loginUrl = new URL("/login", request.url);
     const nextTarget = `${pathname}${request.nextUrl.search}`;
@@ -52,7 +62,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && pathname === "/login") {
+  if (user && AUTH_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

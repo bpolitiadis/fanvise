@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import { Loader2, Terminal } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createTypedClient } from "@/utils/supabase/client";
 
 export function DevLoginButton() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get("next")?.startsWith("/") ? searchParams.get("next")! : "/dashboard";
 
   // Only render in development
   if (process.env.NODE_ENV !== "development") {
@@ -32,15 +35,14 @@ export function DevLoginButton() {
         password,
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
+      toast.success("Logged in as dev user.");
       router.refresh();
-      router.push("/dashboard"); // Or check query params for 'next'
-    } catch (error) {
-      console.error("Dev login failed:", error);
-      alert("Dev login failed. Check console and ensure test user exists.");
+      router.push(nextPath);
+    } catch (err) {
+      console.error("Dev login failed:", err);
+      toast.error("Dev login failed. Ensure test user (test@example.com) exists in Supabase.");
     } finally {
       setIsLoading(false);
     }

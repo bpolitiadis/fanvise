@@ -2,95 +2,60 @@
 
 **The Intelligent Edge for Fantasy Basketball.**
 
-FanVise is a strategic intelligence platform for ESPN Fantasy Basketball (H2H Points). It acts as a **FanVise Strategist**—your data-obsessed, trash-talking friend who bridges the gap between raw league data and winning decisions by combining private league context with real-time NBA intelligence.
+FanVise is an AI-native strategic platform for ESPN Fantasy Basketball (H2H Points). It acts as a **FanVise Strategist**—your data-obsessed, trash-talking friend who bridges the gap between raw league data and winning decisions.
 
-## 🧠 Dual-Environment AI Architecture
+## 🧠 Dual-Mode AI Architecture
 
-FanVise leverages a unique **Environment-Adaptive RAG** architecture, allowing you to choose your intelligence provider:
+FanVise provides two discrete AI execution paths:
 
-*   **Cloud Mode (Google Gemini 2.0)**: High-reasoning, low-latency performance for complex strategic analysis.
-*   **Local Mode (Ollama)**: Privacy-focused, offline-capable inference using models like **Llama 3.1** (recommended; supports agent tool-calling), running entirely on your local machine.
+1. **Classic Mode** (`/api/chat`): High-speed, single-pass Retrieval-Augmented Generation (RAG). Perfect for instant lineup advice and summarizing daily news.
+2. **Agentic Mode** (`/api/agent/chat`): Autonomous LangGraph agents capable of performing iterative, deep-dive research (e.g., live injury tracking and multi-player comparisons) via tool-calling.
+
+You can run both modes using either **Cloud (Google Gemini 2.0)** or **Local (Ollama / Llama 3.1)** models, depending on your privacy requirements.
 
 ## 🚀 Getting Started
 
-For detailed installation instructions, prerequisites (Docker, Supabase, Ollama), and configuration, please refer to our **[Getting Started Guide](./GETTING_STARTED.md)**.
+To spin up the application (requires Docker, Supabase, and Node), see our **[Getting Started Guide](./GETTING_STARTED.md)**.
 
-Package manager standard: this project uses `pnpm` (via Corepack) instead of `npm` for all install/run/test commands.
+*Note: This project uses `pnpm` (via Corepack) instead of `npm`.*
 
-## 🔐 Supabase Auth (Google OAuth)
+## 🔐 Authentication (Supabase Auth)
 
-FanVise now uses Supabase Auth with SSR cookie sessions (no client-side localStorage session persistence).
+FanVise uses Supabase Auth with SSR cookie sessions (no client-side localStorage).
 
-Required environment variables:
-
+Required environment variables in `.env.local`:
 *   `NEXT_PUBLIC_SUPABASE_URL`
-*   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY` as fallback)
-*   `SUPABASE_SERVICE_ROLE_KEY` (server-side admin operations only)
+*   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 
-Auth flow routes:
+Auth flows:
+*   `GET /login` displays the login view (Google OAuth, Email/Password, and local Dev Login).
+*   Protected routes: `/`, `/dashboard`, `/settings`, `/chat`, `/optimize`, `/league` (enforced in `src/middleware.ts`).
 
-*   `GET /login` - Google sign-in view
-*   `GET /auth/callback` - PKCE code exchange route
+Read the full **[Authentication System Docs](./docs/Authentication.md)** for details.
 
-Protected routes (`/dashboard`, `/settings`) are enforced in `src/middleware.ts`.
+## 📚 Documentation Hub
 
-## 📚 Documentation
-
-We maintain comprehensive documentation for developers and contributors:
+We maintain centralized, clean documentation for the architecture and AI models in the `docs/` folder:
 
 *   **[Documentation Index](./docs/README.md)**
-    *   **[Product Vision (PRD)](./docs/genesis/FanVise%20PRD_%20AI%20Fantasy%20Sports%20Strategy.md)**
-    *   **[System Architecture](./docs/technical/Architecture.md)**
-    *   **[Technical Implementation](./docs/technical)**
+*   **[System Architecture](./docs/technical/Architecture.md)**
+*   **[API & Agents (Classic vs Agentic)](./docs/technical/API_and_Agents.md)**
 
-## Key Features
-
-*   **🎙️ FanVise Strategist**: A high-energy, data-obsessed AI persona that provides data-grounded advice with a competitive edge.
-*   **📡 Real-Time Intelligence Feed**: Aggregated news from ESPN, CBS, and Rotowire.
-*   **📊 Dynamic Dashboard**: High-density view of league standings and rosters.
-*   **🔄 Perspective Engine**: Simulate any manager's view to find their weaknesses.
-
-## Tech Stack
+## Tech Stack Overview
 
 *   **Frontend**: Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui.
-*   **Backend**: Supabase (PostgreSQL + Vector), Next.js Server Actions.
-*   **AI/ML**: Google Vertex AI (Gemini), Ollama (Local LLMs).
+*   **Backend**: Supabase (PostgreSQL + pgvector).
+*   **AI Orchestration**: LangGraph.js, Google Generative AI SDK, Ollama.
 
 ## AI Evaluation (FanVise Combine)
 
 The repository includes a standalone black-box RAG evaluation suite in `fanvise_eval/`.
+*   Run with: `pnpm test:ai`
+*   Evaluations target `http://localhost:3000/api/chat` using `fanvise_eval/golden_dataset.json`.
 
-*   Install and run from the root with: `pnpm test:ai`
-*   Evaluations target `http://localhost:3000/api/chat`
-*   Dataset source: `fanvise_eval/golden_dataset.json`
-*   Judge provider is configurable (`none`, `gemini`, `openai`, `ollama`, `local`) via `fanvise_eval/.env`.
+## Operations (CLI Tools)
 
-## Operations and Testing
-
-Operational workflows are handled via tracked scripts in `src/ops/`:
-
-*   `pnpm news:ingest` - Run standard **news-only** ingestion (Gemini extraction + embeddings).
-*   `pnpm news:ingest:historical` - Run historical backfill (`NEWS_BACKFILL_PAGES` configurable).
-*   `pnpm league:sync` - Sync league metadata and transactions from ESPN to Supabase.
-*   `pnpm leaders:sync` - Sync daily leaders (per scoring period) into Supabase (`DAILY_LEADERS_DATE=YYYY-MM-DD` optional override).
-
-Production runs automated lightweight **news-only** ingestion twice daily via GitHub Actions hitting `/api/cron/news`:
-
-*   Schedule: `11:00` and `22:00` UTC (`.github/workflows/news-ingest-cron.yml`).
-*   `NEWS_CRON_LIMIT` controls max items per run (default `12`, capped at `25`).
-*   Optional hardening: set `CRON_SECRET` in Vercel and in GitHub Secrets.
-*   Optional override: set `FANVISE_PROD_URL` in GitHub Secrets (defaults to `https://fanvise.vercel.app`).
-*   Runtime guardrails in `src/app/api/cron/news/route.ts` skip execution outside the two allowed UTC windows.
-
-Manual dashboard controls are now split:
-
-*   **Sync League**: `/api/sync`, transactions, player statuses, and daily leaders.
-*   **Sync News**: `/api/news/sync` only (RSS fetch + Gemini extraction + embeddings).
-*   `/api/news/sync` requires explicit manual intent header (`x-fanvise-sync-intent: manual-news-sync`) to reduce accidental triggers.
-
-Integration verification lives in `tests/integration/` and is environment-gated:
-
-*   `pnpm test:integration` - Runs integration tests that require `RUN_INTEGRATION_TESTS=true`.
-*   `pnpm test:integration:live-feeds` - Also enables live RSS reachability checks.
-
-This keeps one-off debugging out of production workflows and moves repeatable checks into test cases.
+Run operational data syncs locally from `src/ops/`:
+*   `pnpm league:sync` - Sync ESPN league metadata, teams, and rosters.
+*   `pnpm news:ingest` - Fetch new RSS feeds, extract data via Gemini, and generate embeddings.
+*   `pnpm leaders:sync` - Sync daily player performance.

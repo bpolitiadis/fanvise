@@ -19,12 +19,14 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   FlaskConical,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { usePerspective, Team } from "@/lib/perspective-context";
 import { useChatHistory } from "@/components/chat/chat-history-context";
+import { signOutAndRedirect } from "@/utils/auth/logout";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +67,10 @@ export function Sidebar({
     createConversation,
   } = useChatHistory();
   const pathname = usePathname();
+
+  const handleLogout = async () => {
+    await signOutAndRedirect();
+  };
 
   const teams = activeLeague?.teams || [];
   const historyForTeam = conversations.filter(
@@ -367,6 +373,14 @@ export function Sidebar({
               >
                   <HelpCircle className="h-4 w-4 opacity-70" />
                   Support
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleLogout}
+                className="h-9 w-full justify-start gap-3 px-2 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                  <LogOut className="h-4 w-4 opacity-70" />
+                  Logout
               </Button>
           </div>
           {process.env.NODE_ENV === "development" && (

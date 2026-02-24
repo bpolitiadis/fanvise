@@ -3,21 +3,28 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Mail } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { createTypedClient } from "@/utils/supabase/client";
+
+/** Sanitize auth errors for safe display. Avoids leaking internal details. */
+function sanitizeAuthError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("stack") || msg.length > 200) return "Authentication failed. Please try again.";
+  return msg;
+}
 
 export function EmailAuthForm() {
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next") || "/dashboard";
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>, type: 'signin' | 'signup') {
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>, type: "signin" | "signup") {
     event.preventDefault();
     setIsLoading(true);
-    setMessage(null);
 
     const formData = new FormData(event.currentTarget);
     const email = formData.get("email") as string;
@@ -25,27 +32,25 @@ export function EmailAuthForm() {
     const supabase = createTypedClient();
 
     try {
-      if (type === 'signup') {
+      if (type === "signup") {
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=${nextPath}`,
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
           },
         });
         if (error) throw error;
-        setMessage({ type: 'success', text: "Check your email to confirm your account." });
+        toast.success("Check your email to confirm your account.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        toast.success("Signed in successfully.");
         router.push(nextPath);
         router.refresh();
       }
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message });
+    } catch (err) {
+      toast.error(sanitizeAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -78,42 +83,33 @@ export function EmailAuthForm() {
 
       <form onSubmit={(e) => onSubmit(e, mode)} className="space-y-4">
         <div className="space-y-2">
-          {/* Using standard label since I didn't see label.tsx in ui list */}
-          <label htmlFor="email" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Email</label>
-          <Input 
-            id="email" 
-            name="email" 
-            placeholder="m@example.com" 
-            type="email" 
-            autoCapitalize="none" 
-            autoComplete="email" 
-            autoCorrect="off" 
-            disabled={isLoading} 
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            placeholder="m@example.com"
+            type="email"
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect="off"
+            disabled={isLoading}
             required
           />
         </div>
         <div className="space-y-2">
-          <label htmlFor="password" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Password</label>
-          <Input 
-            id="password" 
-            name="password" 
-            type="password" 
-            autoComplete={mode === 'signin' ? "current-password" : "new-password"}
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}
             disabled={isLoading}
             required
             minLength={6}
           />
         </div>
 
-        {message && (
-          <div className={`p-3 rounded-md text-sm ${
-            message.type === 'success' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-destructive/10 text-destructive'
-          }`}>
-            {message.text}
-          </div>
-        )}
-
-        <Button className="w-full" type="submit" disabled={isLoading}>
+        <Button className="w-full" type="submit" disabled={isLoading} aria-busy={isLoading}>
           {isLoading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
