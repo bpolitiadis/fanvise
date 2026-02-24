@@ -96,7 +96,7 @@ Remaining P1–P3 items are tracked below and scheduled for follow-up sprints.
 |----|-------|----------|--------|
 | **N8** | No index on `news_items.published_at` — full table scan before every vector search | **P0** | **✅ Fixed** |
 | N9 | No HNSW index on `news_items.embedding` — O(n) cosine scan at scale | Medium | Open (defer to >5k rows) |
-| N10 | `news_items.impacted_player_ids` column name lies — stores names not IDs | High | Open |
+| **N10** | `news_items.impacted_player_ids` column name lies — stores names not IDs | High | **✅ Fixed** |
 | N11 | `player_status_snapshots.expected_return_date` typed as `date`, should be `timestamptz` | Low | Open |
 | N12 | No mechanism to expire stale `player_status_snapshots` — OUT players stay OUT forever | Medium | Open |
 
@@ -165,9 +165,17 @@ All lower-risk P1 items resolved:
 | A3 | Unified data source metadata across standings tools | ✅ Done |
 | G6/M3 | Map `pointsFor`/`pointsAgainst` from ESPN into DB and AI tools | ✅ Done |
 
-## Recommended P2 Sprint (Next — Schema Changes)
+## P2 Sprint Complete
 
-Requires DB migrations — coordinate with a deploy:
+All code-only and schema-change P2 items have been resolved:
 
-1. **N10** — Rename `impacted_player_ids` → `impacted_player_names` across schema + code (stores names not IDs)
-2. **S1** — Add `roster_snapshot jsonb` + `roster_snapshot_at timestamptz` to `leagues` table (ESPN offline fallback)
+| ID | Fix | Status |
+|----|-----|--------|
+| G1 | `getMatchups()` uses `buildLeagueUrl()` | ✅ Done |
+| G2 | Removed invalid `rosterForCurrentScoringPeriod` view | ✅ Done |
+| M4 | `is_user_owned` trims ESPN_SWID env var | ✅ Done |
+| N13 | Vector + lexical search parallelised with `Promise.all` | ✅ Done |
+| A1 | `processTransactions()` typed via `EspnTransaction` interfaces | ✅ Done |
+| N10 | Renamed `impacted_player_ids` → `impacted_player_names` (migration + code) | ✅ Done |
+| S1 | Added `roster_snapshot` + `roster_snapshot_at` to `leagues` (migration + code) | ✅ Done |
+| S3 | `game_date` now resolved from `nba_schedule` on every game log write | ✅ Done |

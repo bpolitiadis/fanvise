@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — ESPN Data & News Pipeline P2 schema + code (2026-02-24)
+
+- **[N10] `impacted_player_ids` renamed to `impacted_player_names`** — The column has always stored player names, not ESPN integer IDs. Migration `20260224210000` renames the column and recreates the `match_news_documents` RPC with the corrected return type. All TypeScript references in `news.service.ts` updated. (`supabase/migrations/20260224210000_rename_impacted_player_ids.sql`, `src/services/news.service.ts`)
+
+- **[S1] `roster_snapshot` fallback on `leagues`** — Added `roster_snapshot jsonb` and `roster_snapshot_at timestamptz` columns to the `leagues` table. The league upsert now writes a timestamped snapshot of the full teams/roster array on every ESPN sync, giving the AI service layer an offline fallback when ESPN is unreachable. (`supabase/migrations/20260224220000_leagues_roster_snapshot.sql`, `src/types/league.ts`, `src/services/league.service.ts`)
+
+- **[S3] `game_date` always populated on game log writes** — `game-log.service.ts` now resolves `game_date` from `nba_schedule` (a single batch query per fetch) before upserting rows. Without this, `v_roster_value`'s 21-day `WHERE game_date >= ...` clause silently excluded all game log rows, making the streaming and drop-analysis tools blind to recent performance. (`src/services/game-log.service.ts`)
+
 ### Fixed — ESPN Data & News Pipeline P2 code-quality (2026-02-24)
 
 - **[G1] `getMatchups()` URL construction** — Replaced manual URL template duplication with the shared `buildLeagueUrl()` helper, keeping all URL construction in one place. (`src/lib/espn/client.ts`)
