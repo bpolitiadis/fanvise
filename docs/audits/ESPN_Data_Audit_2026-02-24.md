@@ -27,8 +27,8 @@ Remaining P1–P3 items are tracked below and scheduled for follow-up sprints.
 
 | ID | Issue | Severity | Status |
 |----|-------|----------|--------|
-| G1 | `getMatchups()` manually builds URL instead of using `buildLeagueUrl()` | Medium | Open |
-| G2 | `rosterForCurrentScoringPeriod` passed as view string is not a valid ESPN view | High | Open |
+| **G1** | `getMatchups()` manually builds URL instead of using `buildLeagueUrl()` | Medium | **✅ Fixed** |
+| **G2** | `rosterForCurrentScoringPeriod` passed as view string is not a valid ESPN view | High | **✅ Fixed** |
 | G3 | `filterSlotIds: undefined` in JSON filter object (should be omitted) | Low | Open |
 | G4 | `getLeadersForScoringPeriod()` sorts 1000+ players client-side — no server-side limit | Medium | Open |
 | G5 | `getPlayerInfo` vs `getPlayerCard` — difference not documented | Low | Open |
@@ -41,7 +41,7 @@ Remaining P1–P3 items are tracked below and scheduled for follow-up sprints.
 | M1 | `scoringSettings` typed `Record<string, unknown>` — no numeric validation before optimizer use | High | Open |
 | M2 | `positionalRatings` / `liveScoring` are fetched and stored but never consumed by any AI tool | Medium | Open |
 | **M3** | `pointsFor` / `pointsAgainst` not mapped (see G6) | **P1** | **✅ Fixed** |
-| M4 | `is_user_owned` check fails if `ESPN_SWID` env var is empty string | Medium | Open |
+| **M4** | `is_user_owned` check fails if `ESPN_SWID` env var is empty string | Medium | **✅ Fixed** |
 | M5 | Draft detail falls back to `draftSettings` (config object), not draft picks | Medium | Open |
 
 ### 1.3 Database Schema
@@ -60,7 +60,7 @@ Remaining P1–P3 items are tracked below and scheduled for follow-up sprints.
 
 | ID | Issue | Severity | Status |
 |----|-------|----------|--------|
-| A1 | `processTransactions()` parameter typed as `any[]` | Medium | Open |
+| **A1** | `processTransactions()` parameter typed as `any[]` | Medium | **✅ Fixed** |
 | A2 | `avgPoints: 0` for injured players with 0 games can trigger incorrect drop recommendations | Medium | Open |
 | **A3** | `get_league_standings` reads stale DB; `get_team_season_stats` reads live ESPN — data can contradict | **P1** | **✅ Fixed** |
 | **A6** | `positionId` description off-by-one (`1=PG` vs correct `0=PG`) | **P0** | **✅ Fixed** |
@@ -104,7 +104,7 @@ Remaining P1–P3 items are tracked below and scheduled for follow-up sprints.
 
 | ID | Issue | Severity | Status |
 |----|-------|----------|--------|
-| N13 | Vector and lexical searches are sequential — can be parallelised with `Promise.all` | Medium | Open |
+| **N13** | Vector and lexical searches are sequential — can be parallelised with `Promise.all` | Medium | **✅ Fixed** |
 | N14 | `trust` weight is only 3% of hybrid score — low-trust articles can outrank ESPN | Medium | Open |
 | N15 | `full_content` fetched from ESPN but truncated to 600 chars before being passed to LLM | Medium | Open |
 

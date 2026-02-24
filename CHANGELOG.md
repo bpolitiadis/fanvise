@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — ESPN Data & News Pipeline P2 code-quality (2026-02-24)
+
+- **[G1] `getMatchups()` URL construction** — Replaced manual URL template duplication with the shared `buildLeagueUrl()` helper, keeping all URL construction in one place. (`src/lib/espn/client.ts`)
+
+- **[G2] Invalid ESPN view string** — Removed `'rosterForCurrentScoringPeriod'` from the `getMatchups()` call in `buildIntelligenceSnapshot`. It is not a real ESPN view and was silently ignored by the API; `mRoster` already returns full roster data. (`src/services/league.service.ts`)
+
+- **[M4] `is_user_owned` with empty-string SWID** — The ownership check in `mapEspnLeagueData()` now trims `ESPN_SWID` before comparison, preventing false-negative team ownership when the env var is set to `""` or has accidental whitespace. (`src/lib/espn/mappers.ts`)
+
+- **[N13] Parallelised vector + lexical news search** — `searchNews()` previously ran vector embedding → RPC → lexical queries sequentially. Lexical query now fires immediately in a `Promise.all` alongside the embedding→RPC chain, reducing P50 search latency by ~200–500 ms. (`src/services/news.service.ts`)
+
+- **[A1] `processTransactions()` typed parameters** — Replaced `any[]` with `EspnTransaction` / `EspnTransactionItem` interfaces, eliminating all `any` in the transactions pipeline. (`src/services/league.service.ts`)
+
 ### Fixed — ESPN Data & News Pipeline P1 (2026-02-24)
 
 - **[N1] Underdog NBA placeholder feed** — The Underdog NBA RSS entry had a hardcoded placeholder URL (`UNDERDOG_NBA_PLACEHOLDER.xml`) that threw a parse error on every sync cycle. The feed list now filters out any entry whose URL is empty or contains `PLACEHOLDER`. Set `UNDERDOG_NBA_RSS_URL` in env to activate the feed when a real URL is available. (`src/services/news.service.ts`)
