@@ -4,12 +4,20 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2, Save } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 
 import { settingsSchema } from "@/lib/settings-schema";
 import type { SettingsSchema } from "@/lib/settings-schema";
-import { updateUserSettings } from "@/actions/settings";
+import { updateUserSettings, getTeamsForLeague } from "@/actions/settings";
+import { usePerspective } from "@/lib/perspective-context";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Form,
   FormControl,
@@ -29,6 +37,9 @@ interface SettingsFormProps {
 export function SettingsForm({ defaultValues }: SettingsFormProps) {
   const [showKey, setShowKey] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [teams, setTeams] = useState<{ id: string; name: string; abbrev: string }[]>([]);
+  const [isFetchingTeams, setIsFetchingTeams] = useState(false);
+  const { refreshPerspective } = usePerspective();
 
   const form = useForm<SettingsSchema>({
     resolver: zodResolver(settingsSchema),
@@ -39,10 +50,44 @@ export function SettingsForm({ defaultValues }: SettingsFormProps) {
     },
   });
 
+  const watchedLeagueId = form.watch("espn_league_id");
+
+  useEffect(() => {
+    let active = true;
+    const fetchTeams = async () => {
+      if (!watchedLeagueId || watchedLeagueId.trim() === "") {
+        setTeams([]);
+        return;
+      }
+      setIsFetchingTeams(true);
+      try {
+        const fetched = await getTeamsForLeague(watchedLeagueId);
+        if (active) {
+          setTeams(fetched);
+          // If the current team ID is set but not in the fetched list, we might want to let the user know, 
+          // or just leave it. Keeping the value even if not in options is standard for Select sometimes, 
+          // but we rely on the options to display.
+        }
+      } catch (err) {
+        if (active) setTeams([]);
+      } finally {
+        if (active) setIsFetchingTeams(false);
+      }
+    };
+    
+    // Debounce the fetch by 500ms
+    const timeout = setTimeout(fetchTeams, 500);
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+    };
+  }, [watchedLeagueId]);
+
   function onSubmit(values: SettingsSchema) {
     startTransition(async () => {
       const result = await updateUserSettings(values);
       if (result.success) {
+        await refreshPerspective();
         toast.success("Settings saved.", {
           description: "Your configuration has been updated.",
         });
@@ -181,18 +226,38 @@ export function SettingsForm({ defaultValues }: SettingsFormProps) {
                       (your default perspective)
                     </span>
                   </FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      placeholder={
-                        process.env.NEXT_PUBLIC_ESPN_TEAM_ID
-                          ? `Default: ${process.env.NEXT_PUBLIC_ESPN_TEAM_ID}`
-                          : "e.g. 3"
-                      }
-                      inputMode="numeric"
-                      className="font-mono text-sm"
-                    />
-                  </FormControl>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isFetchingTeams || teams.length === 0}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="font-mono text-sm max-w-full">
+                        <SelectValue
+                          placeholder={
+                            isFetchingTeams
+                              ? "Loading teams..."
+                              : teams.length === 0
+                              ? "Enter League ID first"
+                              : "Select Team"
+                          }
+                        />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {teams.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name} (ID: {t.id})
+                        </SelectItem>
+                      ))}
+                      {/* Fallback to show existing value if not fetched yet, to avoid UI crash if a team is set but not in dropdown */}
+                      {field.value && !teams.find((t) => t.id === field.value) && (
+                        <SelectItem value={field.value} className="hidden">
+                          Team {field.value}
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
                   <FormDescription>
                     Your team number in the league. Sets your default
                     perspective — you can still view any team via the

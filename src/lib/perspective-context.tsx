@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { getNormalizedTeamLogoUrl } from '@/lib/espn/team-logo'
+import { updateUserSettings } from '@/actions/settings'
 
 // --- Types ---
 
@@ -57,7 +58,8 @@ interface PerspectiveState {
   activeLeague: League | null
   isLoading: boolean
   error: string | null
-  switchPerspective: (teamId: string | number) => Promise<void>
+  switchPerspective: (teamId: string | number, leagueId?: string) => Promise<void>
+  refreshPerspective: () => Promise<void>
   isMyTeam: boolean
 }
 
@@ -65,14 +67,12 @@ interface PerspectiveState {
 
 const PerspectiveContext = createContext<PerspectiveState | undefined>(undefined)
 
-const STORAGE_KEY = 'fanvise_active_team_id'
-
 export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null)
   const [activeLeagueId, setActiveLeagueId] = useState<string | null>(null)
   const [activeTeam, setActiveTeam] = useState<Team | null>(null)
   const [activeLeague, setActiveLeague] = useState<League | null>(null)
-  const [isLoading, setIsLoading] = useState<boolean>(true) // Start loading to check storage
+  const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
   const supabase = createClient()
@@ -157,12 +157,10 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
           setActiveTeamId(team.id)
         } else {
           console.warn(`[Perspective] Team ${teamId} not found — falling back.`)
-          localStorage.removeItem(STORAGE_KEY)
           const fallbackTeam = resolveDefaultTeam(teams)
           if (fallbackTeam) {
             setActiveTeam(fallbackTeam)
             setActiveTeamId(fallbackTeam.id)
-            localStorage.setItem(STORAGE_KEY, fallbackTeam.id)
           } else {
             setActiveTeam(null)
             setActiveTeamId(null)
@@ -173,7 +171,6 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
         if (fallbackTeam) {
           setActiveTeam(fallbackTeam)
           setActiveTeamId(fallbackTeam.id)
-          localStorage.setItem(STORAGE_KEY, fallbackTeam.id)
         } else {
           setActiveTeam(null)
           setActiveTeamId(null)
@@ -198,48 +195,33 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [supabase])
 
-  // Initialize from LocalStorage or default from user_leagues
+  // Initialize directly from server/supabase state
   useEffect(() => {
     const init = async () => {
-      const storedTeamId = localStorage.getItem(STORAGE_KEY)
-      
-      if (storedTeamId) {
-        // We have a saved team, use it
-        await fetchContextData(storedTeamId)
-      } else {
-        // Check if user is logged in
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        if (user) {
-          // Try to get their active team
-          const { data: userLeagueData } = await supabase
-            .from('user_leagues')
-            .select('team_id, league_id')
-            .eq('user_id', user.id)
-            .eq('is_active', true)
-            .maybeSingle()
-
-          if (userLeagueData?.team_id) {
-            await fetchContextData(userLeagueData.team_id, userLeagueData.league_id)
-          } else {
-            // Logged in but no active team, just load default league
-            await fetchContextData()
-          }
-        } else {
-          // Not logged in, load default league
-          await fetchContextData()
-        }
-      }
+      await fetchContextData()
     }
     init()
-  }, [fetchContextData, supabase])
+  }, [fetchContextData])
 
-  const switchPerspective = async (teamId: string | number) => {
+  const switchPerspective = async (teamId: string | number, leagueId?: string) => {
     const id = String(teamId)
+    const activeLId = leagueId ? String(leagueId) : activeLeagueId
+
     setActiveTeamId(id)
-    localStorage.setItem(STORAGE_KEY, id)
-    await fetchContextData(id)
+    if (activeLId) setActiveLeagueId(activeLId)
+
+    if (activeLId) {
+      // Fire action to persist immediately without waiting
+      updateUserSettings({ espn_league_id: activeLId, espn_team_id: id }).catch(console.error)
+    }
+
+    await fetchContextData(id, activeLId ?? undefined)
   }
+
+  const refreshPerspective = useCallback(async () => {
+    // Re-read user_settings and league context after settings updates.
+    await fetchContextData()
+  }, [fetchContextData])
 
   const isMyTeam = activeTeam?.is_user_owned ?? false
 
@@ -253,6 +235,7 @@ export const PerspectiveProvider = ({ children }: { children: ReactNode }) => {
         isLoading,
         error,
         switchPerspective,
+        refreshPerspective,
         isMyTeam,
       }}
     >

@@ -1,15 +1,14 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Plus,
   MessageSquare,
   Users,
   User,
   Shield,
-  ChevronDown,
   LayoutDashboard,
   TrendingUp,
   Settings,
@@ -24,17 +23,9 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { usePerspective, Team } from "@/lib/perspective-context";
+import { usePerspective } from "@/lib/perspective-context";
 import { useChatHistory } from "@/components/chat/chat-history-context";
 import { signOutAndRedirect } from "@/utils/auth/logout";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { isAfter, isToday, isYesterday, subDays } from "date-fns";
 
@@ -57,7 +48,12 @@ export function Sidebar({
   collapsed = false,
   onToggleCollapse,
 }: SidebarProps) {
-  const { activeTeam, activeLeague, switchPerspective, isMyTeam } = usePerspective();
+  const { activeTeam, isMyTeam } = usePerspective();
+  const hasMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const {
     conversations,
     activeConversationId,
@@ -72,7 +68,6 @@ export function Sidebar({
     await signOutAndRedirect();
   };
 
-  const teams = activeLeague?.teams || [];
   const historyForTeam = conversations.filter(
     (conversation) => conversation.activeTeamId === (activeTeam?.id ?? null)
   );
@@ -147,68 +142,27 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Team Switcher Header */}
-      <div className="p-3 border-b">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              className={cn(
-                "w-full justify-between border border-transparent hover:border-border hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring",
-                collapsed ? "h-12 px-1" : "h-14 px-2"
-              )}
-            >
-               <div className="flex items-center gap-3 overflow-hidden">
-                  <Avatar className="h-8 w-8 border">
-                    <AvatarImage src={activeTeam?.logo} />
-                    <AvatarFallback>{activeTeam?.abbrev?.substring(0, 2) || "T"}</AvatarFallback>
-                  </Avatar>
-                  {!collapsed && (
-                    <div className="flex flex-col items-start truncate text-left">
-                      <span className="w-[140px] truncate text-sm font-semibold">
-                        {activeTeam?.manager || "Select Team"}
-                      </span>
-                      <span className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
-                        {isMyTeam ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-                        {isMyTeam ? "My Team" : "Opponent View"}
-                      </span>
-                    </div>
-                  )}
-               </div>
-               {!collapsed && <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="z-50 w-[280px] border-border bg-popover shadow-2xl" align="start" side="bottom" sideOffset={10}>
-            <DropdownMenuLabel className="text-xs font-bold text-muted-foreground px-3 py-2 uppercase tracking-widest">Switch Perspective</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <ScrollArea className="h-[400px]">
-                <div className="p-1">
-                    {teams.map((team: Team) => (
-                        <DropdownMenuItem 
-                            key={team.id} 
-                            className="cursor-pointer gap-3 rounded-lg px-3 py-3 transition-colors focus:bg-primary/10"
-                            onClick={() => {
-                              switchPerspective(team.id);
-                              onNavigate?.();
-                            }}
-                        >
-                            <Avatar className="h-8 w-8 border shadow-sm">
-                                <AvatarImage src={team.logo} />
-                                <AvatarFallback className="text-[11px]">{team.abbrev?.substring(0, 2)}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex flex-col min-w-0">
-                                <span className="font-bold text-sm truncate">{team.manager}</span>
-                                <span className="truncate text-[11px] text-muted-foreground">{team.name}</span>
-                            </div>
-                            {team.is_user_owned && (
-                                <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-black text-primary-foreground">YOU</span>
-                            )}
-                        </DropdownMenuItem>
-                    ))}
-                </div>
-            </ScrollArea>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* Team Info Header */}
+      <div className="p-3 border-b flex items-center justify-between border-transparent min-h-[56px] px-4">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <Avatar className="h-8 w-8 border">
+            <AvatarImage src={hasMounted ? activeTeam?.logo : undefined} />
+            <AvatarFallback>
+              {hasMounted ? activeTeam?.abbrev?.substring(0, 2) || "T" : "T"}
+            </AvatarFallback>
+          </Avatar>
+          {!collapsed && (
+            <div className="flex flex-col items-start truncate text-left">
+              <span className="w-[140px] truncate text-sm font-semibold">
+                {hasMounted ? activeTeam?.manager || "Select Setting" : "Select Setting"}
+              </span>
+              <span className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+                {hasMounted && isMyTeam ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                {hasMounted && isMyTeam ? "My Team" : "Opponent View"}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
