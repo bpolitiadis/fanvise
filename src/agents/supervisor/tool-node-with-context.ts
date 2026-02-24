@@ -21,12 +21,19 @@ interface StateWithContext {
   leagueId?: string | null;
 }
 
-const TOOLS_NEED_TEAM_ID = new Set(["get_my_roster", "get_matchup_details"]);
+const TOOLS_NEED_TEAM_ID = new Set([
+  "get_my_roster",
+  "get_matchup_details",
+  "simulate_move",
+  "validate_lineup_legality",
+]);
 const TOOLS_NEED_LEAGUE_ID = new Set([
   "get_my_roster",
   "get_matchup_details",
   "get_league_standings",
   "get_free_agents",
+  "simulate_move",
+  "validate_lineup_legality",
 ]);
 
 function injectContextIntoArgs(

@@ -21,7 +21,21 @@ import { buildIntelligenceSnapshot, fetchLeagueForTool } from "@/services/league
 import { searchNews, searchPlayerStatusSnapshots, fetchPlayerSpecificNews } from "@/services/news.service";
 import { ScheduleService } from "@/services/schedule.service";
 import { getPlayerGameLog } from "@/services/game-log.service";
-import type { FreeAgentCandidate, MatchupSummary, RosterPlayerWithSchedule } from "./types";
+import {
+  scoreDroppingCandidate,
+  scoreStreamingCandidate,
+  simulateMove,
+  validateLineupLegality,
+  type RosterPlayer as OptimizerRosterPlayer,
+  type FreeAgentPlayer as OptimizerFreeAgentPlayer,
+} from "@/services/optimizer.service";
+import type {
+  FreeAgentCandidate,
+  FreeAgentWithSchedule,
+  MatchupSummary,
+  RosterPlayerWithSchedule,
+  SimulateMoveOutput,
+} from "./types";
 
 // ─── ESPN environment (fallback when context leagueId not provided) ───────────
 const DEFAULT_LEAGUE_ID = process.env.NEXT_PUBLIC_ESPN_LEAGUE_ID ?? "";
@@ -165,51 +179,82 @@ export const getMyRosterTool = tool(
     weekEnd.setHours(23, 59, 59, 999);
 
     const gamesInWindow = await scheduleService.getGamesInRange(now, weekEnd);
-    const teamIdsWithGames = new Set(
-      gamesInWindow.flatMap((g) => [g.homeTeamId, g.awayTeamId]).map(String)
+
+    // Compute drop scores via the deterministic optimizer engine (league-relative)
+    const dbLeague = await fetchLeagueForTool(effectiveLeagueId);
+    const allPlayers = snapshot.myTeam.roster ?? [];
+
+    // Approximate league avg from all roster players
+    const validAvgs = allPlayers
+      .map((p) => p.avgPoints ?? 0)
+      .filter((v) => v > 0);
+    const leagueAvgFpts = validAvgs.length > 0
+      ? validAvgs.reduce((s, v) => s + v, 0) / validAvgs.length
+      : 25;
+
+    const rosterResults = await Promise.all(
+      allPlayers.map(async (player) => {
+        const proTeamId = Number(player.proTeam);
+        const playerGames = gamesInWindow.filter(
+          (g) => g.homeTeamId === proTeamId || g.awayTeamId === proTeamId
+        );
+        const gameDates = [
+          ...new Set(playerGames.map((g) => g.date.substring(0, 10))),
+        ];
+
+        const optimizerPlayer: OptimizerRosterPlayer = {
+          playerId: Number(player.id),
+          playerName: player.fullName,
+          position: player.position,
+          eligibleSlots: [player.position],
+          proTeamId,
+          injuryStatus: player.injuryStatus ?? "ACTIVE",
+          avgFpts: player.avgPoints ?? 0,
+          totalFpts: player.totalPoints ?? 0,
+          gamesPlayed: player.gamesPlayed ?? 0,
+        };
+
+        const dropScoreResult = await scoreDroppingCandidate(
+          optimizerPlayer,
+          now,
+          weekEnd,
+          leagueAvgFpts
+        );
+
+        return {
+          playerId: player.id,
+          playerName: player.fullName,
+          position: player.position,
+          injuryStatus: player.injuryStatus,
+          avgPoints: player.avgPoints ?? 0,
+          totalPoints: player.totalPoints ?? 0,
+          gamesPlayed: player.gamesPlayed ?? 0,
+          gamesRemaining: gameDates.length,
+          gamesRemainingDates: gameDates,
+          dropScore: dropScoreResult.score,
+          dropReasons: dropScoreResult.reasons,
+        };
+      })
     );
 
-    const roster = (snapshot.myTeam.roster ?? []).map((player) => {
-      const proTeamId = player.proTeam;
-      const playerGames = gamesInWindow.filter(
-        (g) => String(g.homeTeamId) === proTeamId || String(g.awayTeamId) === proTeamId
-      );
-      const gameDates = playerGames
-        .map((g) => g.date.substring(0, 10))
-        .filter((d, i, arr) => arr.indexOf(d) === i);
-
-      const isDropCandidate =
-        (player.avgPoints ?? 0) < 20 &&
-        gameDates.length <= 2 &&
-        player.injuryStatus !== "ACTIVE";
-
-      return {
-        playerId: player.id,
-        playerName: player.fullName,
-        position: player.position,
-        injuryStatus: player.injuryStatus,
-        avgPoints: player.avgPoints ?? 0,
-        totalPoints: player.totalPoints ?? 0,
-        gamesPlayed: player.gamesPlayed ?? 0,
-        gamesRemaining: teamIdsWithGames.has(proTeamId) ? gameDates.length : 0,
-        gamesRemainingDates: gameDates,
-        isDropCandidate,
-      };
-    });
+    // Suppress lint warning for unused dbLeague (kept for future roster-slot enrichment)
+    void dbLeague;
 
     return {
       teamName: snapshot.myTeam.name,
       source: "ESPN",
-      roster,
+      roster: rosterResults,
     };
   },
   {
     name: "get_my_roster",
     description:
       "Returns YOUR TEAM's roster from ESPN — players on your fantasy team only (NOT free agents). " +
-      "Each player includes: avgPoints (PPG), totalPoints (season total), gamesPlayed (GP), gamesRemaining (this week), injuryStatus, isDropCandidate. " +
-      "For 'totals' or 'season totals': use totalPoints (or avgPoints * gamesPlayed). Do NOT use avgPoints * gamesRemaining — that is a projection, not season total. " +
-      "CRITICAL: Call this FIRST for team audits, roster overviews, or lineup questions. " +
+      "Each player includes: avgPoints (PPG), totalPoints (season total), gamesPlayed (GP), " +
+      "gamesRemaining (this week), injuryStatus, dropScore (0-100, higher = stronger drop signal), dropReasons. " +
+      "dropScore is league-relative and accounts for schedule gaps and injury risk — use it for drop decisions. " +
+      "For 'totals' or 'season totals': use totalPoints (or avgPoints * gamesPlayed). " +
+      "CRITICAL: Call this FIRST for team audits, roster overviews, or lineup optimization. " +
       "Only players in the 'roster' array are on your team. Never list get_free_agents players as roster players.",
     schema: z.object({
       teamId: z.string().describe("The active fantasy team ID"),
@@ -224,18 +269,21 @@ export const getFreeAgentsTool = tool(
     limit = 20,
     positionId,
     leagueId: contextLeagueId,
+    includeSchedule = false,
   }: {
     limit?: number;
     positionId?: number;
     leagueId?: string;
-  }): Promise<FreeAgentCandidate[]> => {
+    includeSchedule?: boolean;
+  }): Promise<FreeAgentCandidate[] | FreeAgentWithSchedule[]> => {
     const effectiveLeagueId = contextLeagueId?.trim() || DEFAULT_LEAGUE_ID;
     const playerService = new PlayerService(effectiveLeagueId, seasonId, sport, swid, s2);
     const players = await playerService.getTopFreeAgents(limit, positionId);
 
-    return players
-      .filter((p) => p.injuryStatus !== "OUT" && !p.isInjured)
-      .map((p) => ({
+    const healthy = players.filter((p) => p.injuryStatus !== "OUT" && !p.isInjured);
+
+    if (!includeSchedule) {
+      return healthy.map((p): FreeAgentCandidate => ({
         playerId: p.id,
         playerName: p.fullName,
         position: p.position,
@@ -244,17 +292,79 @@ export const getFreeAgentsTool = tool(
         percentOwned: p.ownership?.percentOwned ?? 0,
         seasonOutlook: p.seasonOutlook ?? null,
       }));
+    }
+
+    // Enriched mode: add per-player schedule context + streaming score
+    const now = new Date();
+    const weekEnd = new Date(now);
+    weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const scheduleService = new ScheduleService();
+    const gamesInWindow = await scheduleService.getGamesInRange(now, weekEnd);
+
+    const enriched = await Promise.all(
+      healthy.map(async (p): Promise<FreeAgentWithSchedule> => {
+        const proTeamId = Number(p.proTeam ?? 0);
+        const playerGames = gamesInWindow.filter(
+          (g) => g.homeTeamId === proTeamId || g.awayTeamId === proTeamId
+        );
+        const gameDates = [
+          ...new Set(playerGames.map((g) => g.date.substring(0, 10))),
+        ].sort();
+
+        const optimizerFa: OptimizerFreeAgentPlayer = {
+          playerId: Number(p.id),
+          playerName: p.fullName,
+          position: p.position,
+          eligibleSlots: [p.position],
+          proTeamId,
+          injuryStatus: p.injuryStatus ?? "ACTIVE",
+          avgFpts: p.avgPoints ?? 0,
+          percentOwned: p.ownership?.percentOwned ?? 0,
+        };
+
+        const streamResult = await scoreStreamingCandidate(optimizerFa, now, weekEnd);
+
+        return {
+          playerId: p.id,
+          playerName: p.fullName,
+          position: p.position,
+          injuryStatus: p.injuryStatus,
+          avgPoints: p.avgPoints ?? 0,
+          percentOwned: p.ownership?.percentOwned ?? 0,
+          seasonOutlook: p.seasonOutlook ?? null,
+          gamesRemaining: gameDates.length,
+          gamesRemainingDates: gameDates,
+          streamScore: streamResult.score,
+          confidence: streamResult.confidence,
+        };
+      })
+    );
+
+    // Sort by streamScore when schedule is included (volume-adjusted value ranking)
+    return enriched.sort((a, b) => b.streamScore - a.streamScore);
   },
   {
     name: "get_free_agents",
     description:
-      "Returns the top available free agents / waiver wire players, sorted by ownership percentage. " +
-      "Filters out players who are currently OUT or injured. " +
-      "Use this when the user asks about streamers, waiver pickups, or wants to compare roster additions.",
+      "Returns the top available free agents / waiver wire players, filtered to healthy players only. " +
+      "Default mode (includeSchedule=false): sorted by ownership %, returns avgPoints, position, injuryStatus. " +
+      "Streaming mode (includeSchedule=true): also returns gamesRemaining this week, game dates, and streamScore (0-100). " +
+      "streamScore = avgPoints × gamesRemaining, normalized — use it to rank streaming pickups. " +
+      "Set includeSchedule=true whenever the user asks about streamers, streaming pickups, or end-of-week waiver adds.",
     schema: z.object({
       limit: z.number().optional().default(20).describe("Max number of free agents to return (default 20)"),
       positionId: z.number().optional().describe("ESPN position ID to filter by (1=PG, 2=SG, 3=SF, 4=PF, 5=C)"),
       leagueId: z.string().optional().describe("The ESPN league ID from [CONTEXT] — pass when available"),
+      includeSchedule: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Set true to include schedule context (gamesRemaining, gameDates, streamScore). " +
+          "Required for streaming decisions. Adds ~200ms due to schedule join."
+        ),
     }),
   }
 );
@@ -698,6 +808,227 @@ export const getTeamSeasonStatsTool = tool(
   }
 );
 
+// ─── Tool: simulate_move ─────────────────────────────────────────────────────
+
+export const simulateMoveTool = tool(
+  async ({
+    dropPlayerId,
+    dropPlayerName,
+    dropPosition,
+    dropProTeamId,
+    dropAvgPoints,
+    addPlayerId,
+    addPlayerName,
+    addPosition,
+    addProTeamId,
+    addAvgPoints,
+    addPercentOwned,
+    teamId,
+    leagueId: contextLeagueId,
+  }: {
+    dropPlayerId: number;
+    dropPlayerName: string;
+    dropPosition: string;
+    dropProTeamId: number;
+    dropAvgPoints: number;
+    addPlayerId: number;
+    addPlayerName: string;
+    addPosition: string;
+    addProTeamId: number;
+    addAvgPoints: number;
+    addPercentOwned?: number;
+    teamId: string;
+    leagueId?: string;
+  }): Promise<SimulateMoveOutput> => {
+    const effectiveLeagueId = contextLeagueId?.trim() || DEFAULT_LEAGUE_ID;
+    const snapshot = await buildIntelligenceSnapshot(effectiveLeagueId, teamId);
+
+    // Build optimizer-compatible roster from the ESPN snapshot
+    const scheduleService = new ScheduleService();
+    const now = new Date();
+    const weekEnd = new Date(now);
+    weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const currentRoster: OptimizerRosterPlayer[] = (
+      snapshot.myTeam.roster ?? []
+    ).map((p) => ({
+      playerId: Number(p.id),
+      playerName: p.fullName,
+      position: p.position,
+      eligibleSlots: [p.position],
+      proTeamId: Number(p.proTeam ?? 0),
+      injuryStatus: p.injuryStatus ?? "ACTIVE",
+      avgFpts: p.avgPoints ?? 0,
+      totalFpts: p.totalPoints ?? 0,
+      gamesPlayed: p.gamesPlayed ?? 0,
+    }));
+
+    const dropPlayer: OptimizerRosterPlayer = {
+      playerId: dropPlayerId,
+      playerName: dropPlayerName,
+      position: dropPosition,
+      eligibleSlots: [dropPosition],
+      proTeamId: dropProTeamId,
+      injuryStatus: "ACTIVE",
+      avgFpts: dropAvgPoints,
+      totalFpts: 0,
+      gamesPlayed: 0,
+    };
+
+    const addPlayer: OptimizerFreeAgentPlayer = {
+      playerId: addPlayerId,
+      playerName: addPlayerName,
+      position: addPosition,
+      eligibleSlots: [addPosition],
+      proTeamId: addProTeamId,
+      injuryStatus: "ACTIVE",
+      avgFpts: addAvgPoints,
+      percentOwned: addPercentOwned ?? 0,
+    };
+
+    // Fetch league roster slots for lineup validation
+    const dbLeague = await fetchLeagueForTool(effectiveLeagueId);
+    const rosterSlots: Record<string, number> =
+      (dbLeague?.roster_settings as Record<string, number>) ?? {
+        PG: 1, SG: 1, SF: 1, PF: 1, C: 1, G: 1, F: 1, UTIL: 1, BE: 3,
+      };
+
+    const result = await simulateMove(
+      dropPlayer,
+      addPlayer,
+      currentRoster,
+      rosterSlots,
+      now,
+      weekEnd
+    );
+
+    // Suppress unused variable warning
+    void scheduleService;
+
+    return {
+      isLegal: result.isLegal,
+      dropPlayerId: String(result.dropPlayerId),
+      dropPlayerName: result.dropPlayerName,
+      addPlayerId: String(result.addPlayerId),
+      addPlayerName: result.addPlayerName,
+      baselineWindowFpts: result.baselineWindowFpts,
+      projectedWindowFpts: result.projectedWindowFpts,
+      netGain: result.netGain,
+      confidence: result.confidence,
+      warnings: result.warnings,
+      dailyBreakdown: result.dailyBreakdown,
+    };
+  },
+  {
+    name: "simulate_move",
+    description:
+      "Deterministically simulates a 'drop player A, add free agent B' move for the current week. " +
+      "Computes: baselineWindowFpts (expected points WITHOUT the move), projectedWindowFpts (WITH the move), " +
+      "netGain (the actual point delta), and whether the move produces a legal lineup. " +
+      "Use this AFTER get_my_roster and get_free_agents to validate any drop/add recommendation before presenting it. " +
+      "A positive netGain means the move is worth making. Never recommend a move without simulating it first.",
+    schema: z.object({
+      dropPlayerId: z.number().describe("ESPN player ID of the roster player being dropped"),
+      dropPlayerName: z.string().describe("Full name of the player being dropped"),
+      dropPosition: z.string().describe("Fantasy position of the player being dropped (e.g. 'SG')"),
+      dropProTeamId: z.number().describe("ESPN pro team ID of the player being dropped"),
+      dropAvgPoints: z.number().describe("Average fantasy points per game of the player being dropped"),
+      addPlayerId: z.number().describe("ESPN player ID of the free agent being added"),
+      addPlayerName: z.string().describe("Full name of the free agent being added"),
+      addPosition: z.string().describe("Fantasy position of the free agent (e.g. 'PF')"),
+      addProTeamId: z.number().describe("ESPN pro team ID of the free agent"),
+      addAvgPoints: z.number().describe("Average fantasy points per game of the free agent"),
+      addPercentOwned: z.number().optional().describe("Ownership percentage of the free agent (0-100)"),
+      teamId: z.string().describe("The active fantasy team ID"),
+      leagueId: z.string().optional().describe("The ESPN league ID from [CONTEXT] — pass when available"),
+    }),
+  }
+);
+
+// ─── Tool: validate_lineup_legality ──────────────────────────────────────────
+
+export const validateLineupLegalityTool = tool(
+  async ({
+    teamId,
+    leagueId: contextLeagueId,
+    targetDate,
+  }: {
+    teamId: string;
+    leagueId?: string;
+    targetDate?: string;
+  }) => {
+    const effectiveLeagueId = contextLeagueId?.trim() || DEFAULT_LEAGUE_ID;
+    const snapshot = await buildIntelligenceSnapshot(effectiveLeagueId, teamId);
+    const dbLeague = await fetchLeagueForTool(effectiveLeagueId);
+    const rosterSlots: Record<string, number> =
+      (dbLeague?.roster_settings as Record<string, number>) ?? {
+        PG: 1, SG: 1, SF: 1, PF: 1, C: 1, G: 1, F: 1, UTIL: 1, BE: 3,
+      };
+
+    const dateStr = targetDate ?? new Date().toISOString().substring(0, 10);
+    const dayStart = new Date(`${dateStr}T00:00:00Z`);
+    const dayEnd = new Date(`${dateStr}T23:59:59Z`);
+
+    const scheduleService = new ScheduleService();
+    const dayGames = await scheduleService.getGamesInRange(dayStart, dayEnd);
+    const playingTeamIds = new Set(
+      dayGames.flatMap((g) => [g.homeTeamId, g.awayTeamId])
+    );
+
+    const rosterForValidation = (snapshot.myTeam.roster ?? []).map((p) => ({
+      playerId: Number(p.id),
+      playerName: p.fullName,
+      eligibleSlots: [p.position],
+    }));
+
+    const playingPlayerIds = rosterForValidation
+      .filter((p) => {
+        const player = snapshot.myTeam.roster?.find(
+          (r) => String(r.id) === String(p.playerId)
+        );
+        return playingTeamIds.has(Number(player?.proTeam ?? 0));
+      })
+      .map((p) => p.playerId);
+
+    const result = validateLineupLegality({
+      roster: rosterForValidation,
+      rosterSlots,
+      playingPlayerIds,
+    });
+
+    return {
+      date: dateStr,
+      isLegal: result.isLegal,
+      startingSlotsFilled: result.assignments.filter((a) => a.isStarting).length,
+      unfilledStartingSlots: result.unfilledStartingSlots,
+      benchedWithGames: result.benchedWithGames,
+      warnings: result.warnings,
+      assignments: result.assignments.map((a) => ({
+        slot: a.slot,
+        playerName: a.playerName,
+        isStarting: a.isStarting,
+      })),
+    };
+  },
+  {
+    name: "validate_lineup_legality",
+    description:
+      "Checks whether the current roster produces a fully legal starting lineup for a given date. " +
+      "Returns: filled slot assignments, any unfilled starting slots, and players who have a game but can't start. " +
+      "Use this to diagnose lineup problems or confirm a proposed move doesn't create illegal lineup gaps. " +
+      "Defaults to today's date if targetDate is omitted.",
+    schema: z.object({
+      teamId: z.string().describe("The active fantasy team ID"),
+      leagueId: z.string().optional().describe("The ESPN league ID from [CONTEXT] — pass when available"),
+      targetDate: z
+        .string()
+        .optional()
+        .describe("ISO date to validate lineup for (YYYY-MM-DD). Defaults to today."),
+    }),
+  }
+);
+
 // ─── Registry export ──────────────────────────────────────────────────────────
 
 /** All tools available to the Supervisor and sub-agents */
@@ -714,6 +1045,8 @@ export const ALL_TOOLS = [
   getLeagueScoreboardTool,
   getLeagueActivityTool,
   getTeamSeasonStatsTool,
+  simulateMoveTool,
+  validateLineupLegalityTool,
 ] as const;
 
 export type FanviseToolName =
@@ -728,4 +1061,6 @@ export type FanviseToolName =
   | "search_news_by_topic"
   | "get_league_scoreboard"
   | "get_league_activity"
-  | "get_team_season_stats";
+  | "get_team_season_stats"
+  | "simulate_move"
+  | "validate_lineup_legality";

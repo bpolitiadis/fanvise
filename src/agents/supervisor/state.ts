@@ -9,6 +9,7 @@
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { QueryIntent } from "@/agents/shared/types";
+import type { MoveRecommendation } from "@/types/optimizer";
 
 export const SupervisorAnnotation = Annotation.Root({
   /** Full conversation thread — human messages + LLM responses + tool results */
@@ -57,5 +58,15 @@ export const SupervisorAnnotation = Annotation.Root({
   error: Annotation<string | null>({
     reducer: (_, next) => next,
     default: () => null,
+  }),
+
+  /**
+   * Structured move recommendations produced by `LineupOptimizerGraph`.
+   * Empty for all non-optimizer paths. Streamed to the frontend as a
+   * `[[FV_MOVES:BASE64]]` sentinel token at the end of the text stream.
+   */
+  rankedMoves: Annotation<MoveRecommendation[]>({
+    reducer: (_, next) => next,
+    default: () => [],
   }),
 });

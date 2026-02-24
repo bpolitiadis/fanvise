@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
         output: result.answer,
         intent: result.intent,
         toolCallCount: result.toolCallCount,
+        rankedMoves: result.rankedMoves,
         provider: ACTIVE_PROVIDER,
         model: ACTIVE_MODEL,
       });
