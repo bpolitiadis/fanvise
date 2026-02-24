@@ -3,10 +3,7 @@
  * 
  * Orchestrates the "Brain" of the application.
  * Responsibilities:
- * 1. Gather Intelligence (RAG News Search).
- * 2. Build Context (League/Team Snapshots).
- * 3. Construct System Prompts (using Prompt Engine).
- * 4. Generate AI Responses.
+ * 9. Generate AI Responses.
  * 
  * This service acts as the bridge between the raw data services and the AI models.
  * 
@@ -472,7 +469,7 @@ function buildFallbackPrompt(newsContext: string, language: SupportedLanguage, s
             ? "Respond ONLY in Greek. Do not switch to English."
             : "Respond in English.";
 
-    return `You are the FanVise Strategist, a data-obsessed NBA fanatic and fantasy basketball expert.
+    return `You are the FanVise General Manager, a data-obsessed NBA fanatic and fantasy basketball expert.
 Your goal is to provide elite, data-driven advice specifically for NBA Fantasy leagues.
 
 STRICT SCOPE: You are a localized NBA intelligence engine. You MUST IGNORE all other sports (NFL, MLB, etc.). If you do not have data for a specific NBA player, do NOT invent it.

@@ -115,9 +115,9 @@ export function getSystemPrompt(agentName: AgentName, context: PromptContext): s
             return getOrchestratorPrompt(context);
 
         case 'strategist':
-            // Future: Add strategist agent for lineup optimization
+            // Future: Add general manager agent for lineup optimization
             // For now, fall back to orchestrator
-            console.warn('Strategist agent not yet implemented, using orchestrator');
+            console.warn('General Manager agent not yet implemented, using orchestrator');
             return getOrchestratorPrompt(context);
 
         default:
