@@ -75,6 +75,9 @@ const classifyIntentNode = (
     typeof lastHuman?.content === "string" ? lastHuman.content : "";
 
   const intent = classifyIntent(queryText);
+  console.log(
+    `[Supervisor] intent="${intent}" team=${state.teamId ?? "none"} league=${state.leagueId ?? "none"} query="${queryText.slice(0, 80)}${queryText.length > 80 ? "…" : ""}"`
+  );
   return { intent };
 };
 
@@ -95,12 +98,19 @@ const runOptimizerNode = async (
   const query =
     typeof lastHuman?.content === "string" ? lastHuman.content : "";
 
+  console.log(`[Supervisor] → run_optimizer (team=${state.teamId}, league=${state.leagueId})`);
+  const t0 = Date.now();
+
   const result = await runLineupOptimizer({
     teamId: state.teamId,
     leagueId: state.leagueId,
     language: state.language ?? "en",
     query,
   });
+
+  console.log(
+    `[Supervisor] ← run_optimizer completed in ${Date.now() - t0}ms | moves=${result.rankedMoves.length}`
+  );
 
   return {
     answer: result.recommendation,
@@ -159,9 +169,12 @@ const agentNode = async (
   // Only pass tool_choice for Gemini — Ollama uses a different options shape.
   const hasToolResults = state.messages.some((m) => m._getType?.() === "tool");
   // lineup_optimization is handled by run_optimizer and never reaches this node.
-  const intentNeedsTools = ["matchup_analysis", "free_agent_scan", "player_research"].includes(
-    state.intent ?? ""
-  );
+  const intentNeedsTools = [
+    "team_audit",
+    "matchup_analysis",
+    "free_agent_scan",
+    "player_research",
+  ].includes(state.intent ?? "");
   const queryNeedsRoster = (() => {
     const lastHuman = [...state.messages].reverse().find((m) => m._getType?.() === "human");
     const content = typeof lastHuman?.content === "string" ? lastHuman.content.toLowerCase() : "";
@@ -174,9 +187,20 @@ const agentNode = async (
     !hasToolResults &&
     (intentNeedsTools || queryNeedsRoster);
 
+  const iteration = state.toolCallCount + 1;
+  console.log(
+    `[Supervisor] → LLM call #${iteration} | intent=${state.intent ?? "none"} | forceTools=${shouldForceTools} | msgHistory=${normalizedMessages.length}`
+  );
+  const t0 = Date.now();
+
   const response = await llm.invoke(
     [systemMessage, ...normalizedMessages],
     shouldForceTools ? ({ tool_choice: "any" } as object) : undefined
+  );
+
+  const toolCallNames = (response as AIMessage).tool_calls?.map((tc) => tc.name) ?? [];
+  console.log(
+    `[Supervisor] ← LLM call #${iteration} in ${Date.now() - t0}ms | tool_calls=[${toolCallNames.join(", ") || "none — final answer"}]`
   );
 
   return {
@@ -215,12 +239,15 @@ const synthesizeNode = (
   // Detect plan-as-text (LLM described tool calls instead of invoking them)
   const hasToolResults = state.messages.some((m) => m._getType?.() === "tool");
   if (!hasToolResults && looksLikePlan(answer)) {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("[Supervisor] LLM output plan-as-text instead of tool_calls. Replacing with retry message.");
-    }
+    console.warn("[Supervisor] plan-as-text detected — replacing with retry message");
     answer =
       "I need to fetch your data first. Please try again — I'll run the tools this time and give you a full audit.";
   }
+
+  const toolCount = state.messages.filter((m) => m._getType?.() === "tool").length;
+  console.log(
+    `[Supervisor] synthesize | intent=${state.intent ?? "none"} | toolResults=${toolCount} | answerLen=${answer.length}${state.error ? " | ⚠️ capped" : ""}`
+  );
 
   // Append error notice if we hit the tool cap
   if (state.error) {

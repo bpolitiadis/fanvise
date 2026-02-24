@@ -134,6 +134,7 @@ const parseWindowNode = (
   state: typeof LineupOptimizerAnnotation.State
 ): Partial<typeof LineupOptimizerAnnotation.State> => {
   if (!state.teamId || !state.leagueId) {
+    console.error("[Optimizer] parse_window: missing teamId or leagueId — aborting");
     return {
       error:
         "No active team or league context. Please select a team perspective in Settings before running lineup optimization.",
@@ -144,6 +145,10 @@ const parseWindowNode = (
   const weekEnd = new Date(now);
   weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
   weekEnd.setHours(23, 59, 59, 999);
+
+  console.log(
+    `[Optimizer] parse_window | team=${state.teamId} league=${state.leagueId} window=${now.toISOString().slice(0, 10)} → ${weekEnd.toISOString().slice(0, 10)}`
+  );
 
   return {
     windowStart: now.toISOString(),
@@ -166,6 +171,9 @@ const gatherDataNode = async (
   const windowStartDate = new Date(windowStart);
   const windowEndDate = new Date(windowEnd);
   const scheduleService = new ScheduleService();
+
+  console.log(`[Optimizer] gather_data: fetching snapshot + schedule in parallel`);
+  const t0 = Date.now();
 
   try {
     const [snapshot, dbLeague, preloadedGames] = await Promise.all([
@@ -193,6 +201,10 @@ const gatherDataNode = async (
         ? validAvgs.reduce((s, v) => s + v, 0) / validAvgs.length
         : 25;
 
+    console.log(
+      `[Optimizer] gather_data done in ${Date.now() - t0}ms | roster=${roster.length} FA=${freeAgents.length} games=${preloadedGames.length} matchup=${snapshot.matchup?.myScore ?? "?"}-${snapshot.matchup?.opponentScore ?? "?"}`
+    );
+
     return {
       roster,
       freeAgents,
@@ -205,6 +217,7 @@ const gatherDataNode = async (
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Optimizer] gather_data FAILED in ${Date.now() - t0}ms:`, message);
     return { error: `Data fetch failed: ${message}` };
   }
 };
@@ -256,6 +269,16 @@ const scoreCandidatesNode = async (
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_STREAM_CANDIDATES);
 
+  console.log(
+    `[Optimizer] score_candidates | dropCandidates=${dropCandidates.length}/${roster.length} (threshold=${DROP_SCORE_THRESHOLD}) streamCandidates=${streamCandidates.length}/${freeAgents.length} (threshold=${STREAM_SCORE_THRESHOLD})`
+  );
+  if (dropCandidates.length > 0) {
+    console.log(`[Optimizer] top drop: ${dropCandidates[0].playerName} score=${dropCandidates[0].score.toFixed(1)}`);
+  }
+  if (streamCandidates.length > 0) {
+    console.log(`[Optimizer] top stream: ${streamCandidates[0].playerName} score=${streamCandidates[0].score.toFixed(1)}`);
+  }
+
   return { dropCandidates, streamCandidates };
 };
 
@@ -268,6 +291,9 @@ const simulateMovesNode = async (
 ): Promise<Partial<typeof LineupOptimizerAnnotation.State>> => {
   if (state.error) return {};
   if (state.dropCandidates.length === 0 || state.streamCandidates.length === 0) {
+    console.log(
+      `[Optimizer] simulate_moves: skipped — dropCandidates=${state.dropCandidates.length} streamCandidates=${state.streamCandidates.length}`
+    );
     return { simulatedMoves: [] };
   }
 
@@ -302,6 +328,12 @@ const simulateMovesNode = async (
 
   const simulatedMoves = results.filter(
     (r): r is NonNullable<typeof r> => r !== null && r.isLegal
+  );
+
+  const illegalCount = results.filter((r) => r !== null && !r.isLegal).length;
+  const positiveCount = simulatedMoves.filter((m) => m.netGain > 0).length;
+  console.log(
+    `[Optimizer] simulate_moves | pairs=${pairs.length} legal=${simulatedMoves.length} illegal=${illegalCount} positive=${positiveCount}`
   );
 
   return { simulatedMoves };
@@ -340,6 +372,10 @@ const rankMovesNode = (
       streamScore: streamCandidate?.score ?? 0,
     };
   });
+
+  console.log(
+    `[Optimizer] rank_moves | positive moves=${positive.length} | top: ${rankedMoves[0] ? `DROP ${rankedMoves[0].dropPlayerName} → ADD ${rankedMoves[0].addPlayerName} (+${rankedMoves[0].netGain.toFixed(1)} fpts)` : "none"}`
+  );
 
   return { rankedMoves };
 };
@@ -383,12 +419,16 @@ const composeRecommendationNode = async (
 
   // When there are no positive moves, give a clear "no action needed" response
   if (state.rankedMoves.length === 0) {
+    console.log("[Optimizer] compose_recommendation: no positive moves — returning hold message");
     const noMoveMessage =
       lang === "el"
         ? "Μετά από ανάλυση, δεν βρέθηκαν κινήσεις waiver wire με θετικό κέρδος για το τρέχον παράθυρο. Η ομάδα σου είναι ήδη βελτιστοποιημένη — κράτα τους παίκτες σου."
         : "After running the numbers, there are no positive-gain waiver moves for the current window. Your roster is already optimized — hold your players.";
     return { recommendation: noMoveMessage };
   }
+
+  console.log(`[Optimizer] compose_recommendation: LLM call for ${state.rankedMoves.length} move(s)`);
+  const t0 = Date.now();
 
   try {
     const response = await composeLlm.invoke([
@@ -401,6 +441,7 @@ const composeRecommendationNode = async (
         ? response.content
         : JSON.stringify(response.content);
 
+    console.log(`[Optimizer] compose_recommendation done in ${Date.now() - t0}ms | outputLen=${content.length}`);
     return { recommendation: content };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -413,7 +454,7 @@ const composeRecommendationNode = async (
           (m.warnings.length > 0 ? ` | ⚠️ ${m.warnings.join("; ")}` : "")
       )
       .join("\n\n");
-    console.error("[LineupOptimizer] compose_recommendation LLM error:", message);
+    console.error(`[Optimizer] compose_recommendation LLM error after ${Date.now() - t0}ms:`, message);
     return { recommendation: `## Lineup Recommendations\n\n${fallback}` };
   }
 };

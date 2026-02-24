@@ -8,6 +8,7 @@
 
 /** Intent categories the Supervisor routes on */
 export type QueryIntent =
+  | "team_audit"           // Comprehensive roster overview: injuries, performers, streaming, standings
   | "player_research"      // Single or multi-player status/news lookup
   | "free_agent_scan"      // Browse + rank the waiver wire
   | "matchup_analysis"     // Compare my team vs opponent

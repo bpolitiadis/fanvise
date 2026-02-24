@@ -34,7 +34,17 @@ import type { QueryIntent } from "./types";
 // ─── Pattern map ──────────────────────────────────────────────────────────────
 
 const INTENT_PATTERNS: Array<{ intent: Exclude<QueryIntent, "general_advice">; pattern: RegExp }> = [
-  // ── matchup_analysis (FIRST — "matchup" is a strong, unambiguous signal) ──
+  // ── team_audit (FIRST — "audit/comprehensive/full overview" is the strongest signal) ──
+  // Comprehensive team review: injuries + performers + streaming + standings.
+  // Must come before matchup_analysis so "comprehensive audit... matchup status" lands here,
+  // not in the narrower matchup-only branch which would skip get_free_agents.
+  {
+    intent: "team_audit",
+    pattern:
+      /\b(comprehensive|full overview|complete overview|team overview|roster overview|team audit|roster audit|audit.*team|audit.*roster|best.*performer|worst.*performer|injury.*report|full.*report|overview.*team|deep.?dive.*team|deep.?dive.*roster|tell me.*team|tell me.*roster)\b/i,
+  },
+
+  // ── matchup_analysis (SECOND — "matchup" is a strong, unambiguous signal) ──
   // Current matchup score, opponent comparison
   {
     intent: "matchup_analysis",
@@ -92,11 +102,12 @@ const INTENT_PATTERNS: Array<{ intent: Exclude<QueryIntent, "general_advice">; p
  * using deterministic regex pattern matching.
  *
  * Pattern priority (first match wins):
- *  1. matchup_analysis    — current matchup/score context
- *  2. lineup_optimization — explicit roster transaction (drops/adds/start-sit)
- *  3. free_agent_scan     — waiver wire browsing (incl. bare stream/streaming)
- *  4. player_research     — single-player status, injury, news
- *  5. general_advice      — fallback
+ *  1. team_audit          — comprehensive roster overview (injuries + performers + streaming)
+ *  2. matchup_analysis    — current matchup/score context
+ *  3. lineup_optimization — explicit roster transaction (drops/adds/start-sit)
+ *  4. free_agent_scan     — waiver wire browsing (incl. bare stream/streaming)
+ *  5. player_research     — single-player status, injury, news
+ *  6. general_advice      — fallback
  *
  * @param query - The user's natural language question
  * @returns The resolved QueryIntent (never null)

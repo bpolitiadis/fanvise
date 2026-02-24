@@ -129,6 +129,25 @@ const fetchLeague = unstable_cache(
     { revalidate: 60 }
 );
 
+// ─── In-request snapshot cache (with inflight deduplication) ─────────────────
+// Multiple tools (get_my_roster, get_matchup_details, simulate_move,
+// validate_lineup_legality) all call buildIntelligenceSnapshot within one agent
+// turn. Two problems without this cache:
+//   1. Sequential redundancy: tool A completes, tool B re-fetches the same data.
+//   2. Parallel stampede: tool A and tool B start simultaneously, both miss the
+//      cache, and both fire ESPN requests concurrently.
+//
+// Solution: store the in-flight Promise itself. The second parallel call gets the
+// same Promise immediately — one ESPN fetch serves N concurrent callers.
+// The resolved value is then also kept for 30s to serve any later sequential calls.
+interface SnapshotCacheEntry {
+    snapshot: IntelligenceSnapshot;
+    expiresAt: number;
+}
+const _snapshotCache = new Map<string, SnapshotCacheEntry>();
+const _snapshotInflight = new Map<string, Promise<IntelligenceSnapshot>>();
+const SNAPSHOT_TTL_MS = 30_000;
+
 /**
  * Upserts (inserts or updates) a league in the database.
  * 
@@ -598,7 +617,7 @@ function processTransactions(transactions: any[], teams: DbTeam[]): string[] {
  * console.log(snapshot.matchup?.differential); // 30.5
  * ```
  */
-export async function buildIntelligenceSnapshot(
+async function _buildSnapshotUncached(
     leagueId: string,
     teamId: string
 ): Promise<IntelligenceSnapshot> {
@@ -700,7 +719,7 @@ export async function buildIntelligenceSnapshot(
     }
 
     // 7. Build and return snapshot
-    return {
+    const snapshot: IntelligenceSnapshot = {
         league: {
             id: league.league_id,
             name: league.name,
@@ -719,6 +738,43 @@ export async function buildIntelligenceSnapshot(
         transactions,
         builtAt: new Date().toISOString(),
     };
+
+    return snapshot;
+}
+
+export async function buildIntelligenceSnapshot(
+    leagueId: string,
+    teamId: string
+): Promise<IntelligenceSnapshot> {
+    const cacheKey = `${leagueId}:${teamId}`;
+
+    // 1. Return resolved value if still fresh (sequential re-use)
+    const cached = _snapshotCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+        console.log(`[League Service] buildIntelligenceSnapshot cache HIT (${cacheKey})`);
+        return cached.snapshot;
+    }
+
+    // 2. Return the in-flight Promise if a concurrent call is already fetching
+    //    (parallel stampede prevention — both callers share one ESPN fetch)
+    const inflight = _snapshotInflight.get(cacheKey);
+    if (inflight) {
+        console.log(`[League Service] buildIntelligenceSnapshot inflight HIT (${cacheKey})`);
+        return inflight;
+    }
+
+    // 3. Nothing cached — start a fresh fetch, register it as in-flight
+    const promise = _buildSnapshotUncached(leagueId, teamId).then((snapshot) => {
+        _snapshotCache.set(cacheKey, { snapshot, expiresAt: Date.now() + SNAPSHOT_TTL_MS });
+        _snapshotInflight.delete(cacheKey);
+        return snapshot;
+    }).catch((err) => {
+        _snapshotInflight.delete(cacheKey);
+        throw err;
+    });
+
+    _snapshotInflight.set(cacheKey, promise);
+    return promise;
 }
 
 /**

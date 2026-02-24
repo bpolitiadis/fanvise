@@ -1,0 +1,266 @@
+---
+description: ESPN Fantasy Basketball API — data models, endpoint patterns, and TypeScript client reference for FanVise. Always apply when working on anything under src/lib/espn/, src/services/, or src/agents/.
+alwaysApply: true
+---
+
+# ESPN Fantasy Basketball API Reference
+
+This rule teaches agents how ESPN's Fantasy API works and how FanVise's TypeScript client (`src/lib/espn/client.ts`) maps to it. The canonical Python reference library is [cwendt94/espn-api](https://github.com/cwendt94/espn-api/tree/master/espn_api/basketball) — use it to understand ESPN's raw data shapes.
+
+---
+
+## 1. Authentication
+
+ESPN private leagues require two cookies set as a `Cookie` header:
+
+```
+Cookie: swid={SWID}; espn_s2={ESPN_S2};
+```
+
+- `ESPN_SWID` and `ESPN_S2` live in `.env.local` (never commit them).
+- Public leagues work without any cookies.
+- FanVise reads them via `process.env.ESPN_SWID` / `process.env.ESPN_S2`.
+- Sport code for NBA fantasy: `fba` (used in `NEXT_PUBLIC_ESPN_SPORT`).
+
+---
+
+## 2. Base URL Pattern
+
+All league-specific requests follow this pattern:
+
+```
+https://lm-api-reads.fantasy.espn.com/apis/v3/games/{sport}/seasons/{year}/segments/0/leagues/{leagueId}
+```
+
+Season-level (non-league) requests:
+
+```
+https://lm-api-reads.fantasy.espn.com/apis/v3/games/{sport}/seasons/{year}
+```
+
+Multiple `view` query params control what payload sections ESPN returns. Always prefer splitting into separate fetches if combining views produces incomplete payloads (ESPN silently drops sections when the combined payload is too large).
+
+---
+
+## 3. Available Views
+
+| View | What it returns |
+|------|----------------|
+| `mSettings` | League settings, scoring format, roster slots, division config |
+| `mTeam` | All teams with W/L record, points for/against, owner info |
+| `mRoster` | Full rosters with player stats |
+| `mMatchup` | Current matchup scores |
+| `mScoreboard` | Scoreboard data |
+| `mMatchupScore` | Matchup score details (use with `mScoreboard`) |
+| `mLiveScoring` | Live scoring in progress |
+| `mDraftDetail` | Full draft pick history |
+| `mPositionalRatings` | Positional rankings |
+| `mTransactions2` | Recent waiver/FA/trade transactions |
+| `kona_player_info` | Player search/filter (free agents, waivers, status) |
+| `kona_playercard` | Full player card including detailed injury data and stats |
+| `proTeamSchedules_wl` | NBA pro team schedule (season-level endpoint) |
+
+---
+
+## 4. `x-fantasy-filter` Header
+
+ESPN uses a JSON header to filter results on certain views. Always set it as a request header, not a query param.
+
+### Free agents / waivers:
+```json
+{
+  "players": {
+    "filterStatus": { "value": ["FREEAGENT", "WAIVERS"] },
+    "filterSlotIds": { "value": [0] },
+    "limit": 50,
+    "sortPercOwned": { "sortPriority": 1, "sortAsc": false },
+    "sortDraftRanks": { "sortPriority": 100, "sortAsc": true, "value": "STANDARD" }
+  }
+}
+```
+
+### Player card by ID:
+```json
+{
+  "players": {
+    "filterIds": { "value": [playerId] }
+  }
+}
+```
+
+### Recent activity:
+```json
+{
+  "topics": {
+    "filterType": { "value": ["ACTIVITY_TRANSACTIONS"] },
+    "limit": 25,
+    "limitPerMessageSet": { "value": 25 },
+    "offset": 0,
+    "sortMessageDate": { "sortPriority": 1, "sortAsc": false },
+    "sortFor": { "sortPriority": 2, "sortAsc": false },
+    "filterIncludeMessageTypeIds": { "value": [178, 180, 179, 239, 181, 244, 188] }
+  }
+}
+```
+
+---
+
+## 5. Data Models (Python reference → TypeScript mapping)
+
+### Player
+Python source: `espn_api/basketball/player.py`
+
+| Python attr | TypeScript field | Notes |
+|-------------|-----------------|-------|
+| `name` | `playerName` | from `fullName` |
+| `playerId` | `playerId` | ESPN integer ID |
+| `position` | `position` | resolved via `POSITION_MAP` |
+| `lineupSlot` | `lineupSlot` | `POSITION_MAP[lineupSlotId]` |
+| `eligibleSlots` | `eligibleSlots` | array of position strings |
+| `acquisitionType` | `acquisitionType` | `FREEAGENT`, `WAIVER`, `TRADE` |
+| `proTeam` | `proTeam` | resolved via `PRO_TEAM_MAP` |
+| `injuryStatus` | `injuryStatus` | `ACTIVE`, `QUESTIONABLE`, `OUT`, `IR` |
+| `stats['{year}_total']` | `totalFpts` / `avgFpts` | `applied_total` / `applied_avg` |
+| `stats['{year}_projected']` | `projectedTotalFpts` | projected season total |
+| `nine_cat_averages` | — | `3PM, AST, BLK, FG%, FT%, PTS, REB, STL, TO` |
+| `schedule` | `schedule` | `{ [scoringPeriodId]: { team, date } }` |
+
+**Stat ID format (Python `_stat_id_pretty`):**
+```
+'{year}_{type}'
+# type comes from STAT_ID_MAP:
+# '00' → 'total', '10' → 'projected', '01' → 'last_7', '02' → 'last_15', '03' → 'last_30'
+```
+
+Raw stat entries where `statSplitTypeId === 1` and `statSourceId === 0` are **actual per-scoring-period** (i.e. game log entries).
+
+### Team
+Python source: `espn_api/basketball/team.py`
+
+| Python attr | TypeScript field |
+|-------------|-----------------|
+| `team_id` | `teamId` |
+| `team_name` | `teamName` |
+| `team_abbrev` | `teamAbbrev` |
+| `wins` / `losses` / `ties` | `wins` / `losses` / `ties` |
+| `points_for` | `pointsFor` |
+| `points_against` | `pointsAgainst` |
+| `roster` | `roster: Player[]` |
+| `schedule` | `schedule: Matchup[]` |
+| `standing` | `standing` (playoffSeed) |
+| `acquisitions` | `transactionCounter.acquisitions` |
+
+### BoxScore
+Python source: `espn_api/basketball/box_score.py`
+
+- `H2HPointsBoxScore`: for `H2H_POINTS` leagues
+  - `home_score`, `away_score`, `home_projected`, `away_projected`
+  - `home_lineup`, `away_lineup` → `BoxPlayer[]`
+- `H2HCategoryBoxScore`: for `H2H_CATEGORY` / `H2H_MOST_CATEGORIES`
+  - `home_wins`, `home_ties`, `home_losses`, `home_stats`
+  - `home_stats` shape: `{ [statName]: { value: number, result: 'WIN'|'LOSS'|'TIE' } }`
+
+---
+
+## 6. Constants
+
+### STATS_MAP (ESPN stat IDs)
+```
+0: PTS    1: BLK    2: STL    3: AST
+4: OREB   5: DREB   6: REB    11: TO
+13: FGM   14: FGA   15: FTM   16: FTA
+17: 3PM   18: 3PA   19: FG%   20: FT%
+21: 3PT%  37: DD    38: TD    40: MIN
+41: GS    42: GP
+```
+FanVise TypeScript equivalent: `src/lib/espn/constants.ts → ESPN_STAT_MAPPINGS`
+
+### POSITION_MAP (slot IDs)
+```
+0:PG  1:SG  2:SF  3:PF  4:C  5:G  6:F
+7:SG/SF  8:G/F  9:PF/C  10:F/C  11:UT  12:BE  13:IR
+```
+FanVise TypeScript equivalent: `src/lib/espn/constants.ts → ESPN_POSITION_MAPPINGS`
+> Note: Python uses `UT`, FanVise TypeScript uses `UTIL`; Python uses `BE`, FanVise uses `BENCH`.
+
+### PRO_TEAM_MAP (NBA team IDs)
+```
+0:FA  1:ATL  2:BOS  3:NOP  4:CHI  5:CLE  6:DAL  7:DEN
+8:DET  9:GSW  10:HOU  11:IND  12:LAC  13:LAL  14:MIA
+15:MIL  16:MIN  17:BKN  18:NYK  19:ORL  20:PHL  21:PHO
+22:POR  23:SAC  24:SAS  25:OKC  26:UTA  27:WAS  28:TOR
+29:MEM  30:CHA
+```
+
+### NINE_CAT_STATS (H2H category leagues)
+`3PM, AST, BLK, FG%, FT%, PTS, REB, STL, TO`
+
+---
+
+## 7. FanVise TypeScript Client (`src/lib/espn/client.ts`)
+
+The `EspnClient` class is a direct TypeScript port of the Python library's HTTP layer. Constructor:
+```typescript
+new EspnClient(leagueId, seasonId, sport, swid?, s2?)
+// sport = 'fba' for NBA fantasy
+```
+
+### Key methods and their Python equivalents:
+
+| TS method | Python `League` method | Notes |
+|-----------|----------------------|-------|
+| `getLeagueSettings()` | `fetch_league()` | Fetches mSettings+mTeam+mRoster, then merges optional views via `Promise.allSettled` |
+| `getMatchups(scoringPeriodId?)` | `scoreboard(matchupPeriod)` | Use `mMatchup` view |
+| `getFreeAgents(limit, positionId?)` | `free_agents(week, size, position)` | Uses `kona_player_info` + `x-fantasy-filter` |
+| `getTransactions()` | `transactions(scoring_period, types)` | Uses `mTransactions2` |
+| `getPlayerCard(playerId, scoringPeriodId?)` | `player_info(playerId)` | Uses `kona_playercard` |
+| `getPlayerGameLog(playerIds, lastNPeriods)` | accesses `player.stats` | Filters `statSplitTypeId===1 && statSourceId===0` |
+| `getProTeamSchedules()` | `_get_all_pro_schedule()` | Season-level endpoint, `proTeamSchedules_wl` |
+| `getLeadersForScoringPeriod(scoringPeriodId, limit)` | — | Custom: `kona_player_info` sorted by `appliedStatTotal` |
+
+### Cache-control (Next.js `revalidate`):
+- 3600s: League settings, draft, player info (rarely changes)
+- 300s: Free agents, live scoring
+- 86400s: Pro team schedule
+- 60s: Player cards, game log
+- 0 (no cache): Transactions
+
+---
+
+## 8. Mappers (`src/lib/espn/mappers.ts`)
+
+All raw ESPN JSON → typed domain objects should go through mappers. Never spread raw ESPN JSON directly into service types. Key patterns from the Python lib to follow:
+- Always resolve position IDs through `POSITION_MAP` (not raw integers)
+- Always resolve pro team IDs through `PRO_TEAM_MAP`
+- Round `points_against` to 2 decimal places (the Python lib does `round(..., 2)`)
+- Use `json_parsing` style safe-access for deeply nested fields (ESPN often omits keys entirely instead of returning null)
+
+---
+
+## 9. Extending the ESPN Client
+
+When adding a new ESPN API capability:
+
+1. Add the method to `src/lib/espn/client.ts` — raw fetch only, no business logic
+2. Add any new stat/position constants to `src/lib/espn/constants.ts`
+3. Add mapper logic in `src/lib/espn/mappers.ts`
+4. Consume in a service under `src/services/`
+5. Expose to agents as a tool in `src/agents/shared/tool-registry.ts`
+
+Refer to the Python source for the correct `x-fantasy-filter` shape and view names:
+- `league.py` → high-level methods and filter shapes
+- `constant.py` → all ID → string mappings
+- `player.py` → stat parsing logic (`_stat_id_pretty`, stat accumulation)
+- `box_score.py` → H2H points vs category scoring differences
+
+---
+
+## 10. Common Gotchas
+
+- **Missing fields vs null**: ESPN omits keys entirely. Use `data.get('key', default)` style safe access (TypeScript: `data?.key ?? default`).
+- **Scoring period vs matchup period**: In NBA fantasy, one matchup period spans multiple scoring periods (days). `matchup_ids` maps `matchupPeriodId → [scoringPeriodId, ...]`.
+- **Live vs final scores**: Live scoring uses `totalPointsLive`; final uses `appliedStatTotal` on the roster node.
+- **`H2H_MOST_CATEGORIES`** uses the same `H2HCategoryBoxScore` class as `H2H_CATEGORY`.
+- **Payload splitting**: ESPN silently returns incomplete data when too many views are combined. FanVise's `getLeagueSettings()` uses `Promise.allSettled` to fetch optional views separately.
+- **Private league 401s**: Missing or expired `espn_s2`/`swid` cookies return 401. Check `ESPN_SWID` and `ESPN_S2` env vars.
+- **`UT` vs `UTIL`**: Python lib uses `UT` for utility slot; FanVise TypeScript uses `UTIL` for clarity.

@@ -70,6 +70,18 @@ export function createContextAwareToolNode() {
       return baseNode.invoke(state);
     }
 
+    // Log every tool call the LLM decided to make, with key args (sanitised).
+    // This makes it trivial to reconstruct the agent's reasoning from server logs
+    // without having to reverse-engineer ESPN HTTP URLs.
+    if (process.env.NODE_ENV === "development") {
+      for (const tc of lastMessage.tool_calls) {
+        const safeArgs = { ...((tc.args ?? {}) as Record<string, unknown>) };
+        // Redact large/noisy fields that add no debug value
+        for (const k of ["leagueId", "teamId"]) delete safeArgs[k];
+        console.log(`[Agent Tool] → ${tc.name}`, JSON.stringify(safeArgs));
+      }
+    }
+
     // Clone tool calls with injected args so ToolNode uses them
     const modifiedToolCalls = lastMessage.tool_calls.map((tc) => ({
       ...tc,
@@ -89,6 +101,14 @@ export function createContextAwareToolNode() {
     const modifiedMessages = [...messages.slice(0, -1), modifiedAiMessage];
     const modifiedState = { ...state, messages: modifiedMessages };
 
-    return baseNode.invoke(modifiedState);
+    const t0 = Date.now();
+    const result = await baseNode.invoke(modifiedState);
+
+    if (process.env.NODE_ENV === "development") {
+      const names = modifiedToolCalls.map((tc) => tc.name).join(", ");
+      console.log(`[Agent Tool] ← ${names} completed in ${Date.now() - t0}ms`);
+    }
+
+    return result;
   };
 }
