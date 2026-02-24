@@ -558,7 +558,7 @@ export function ChatInterface() {
   }
 
   return (
-    <div className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
