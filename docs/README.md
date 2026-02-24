@@ -21,9 +21,9 @@ Deep dives into the system architecture and implementation details.
 *   **[UI & Branding](./technical/UI_and_Branding.md)**: Design system, components, and theming.
 
 ### Agents & Intelligence
-*   **[API & Agents](./technical/API_and_Agents.md)**: How chat endpoints, core services, and AI orchestration work.
+*   **[API & Agents](./technical/API_and_Agents.md)**: How chat endpoints, core services, and AI orchestration work. Includes the full tool registry (14 tools).
 *   **[Player Research Agent](./technical/Player_Research_Agent.md)**: Details on the first active tool-calling agent.
-*   **[Lineup Optimization Flow](./technical/Lineup_Optimization_Flow.md)**: End-to-end spec for the matchup optimizer.
+*   **[Lineup Optimization Flow](./technical/Lineup_Optimization_Flow.md)**: End-to-end spec for the matchup optimizer. **Phase 1 (Deterministic Optimizer Core) is complete** — see `src/services/optimizer.service.ts`.
 *   **[Rate Limiting Strategy](./technical/rate-limiting-ai-strategy.md)**: Strategies for managing LLM API costs and limits.
 *   **[AI Evaluation Framework](./technical/AI_Evaluation_Framework.md)**: Black-box QA process, judge providers, and evaluation operations.
 

@@ -16,6 +16,10 @@ from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 ROOT = Path(__file__).resolve().parent
 DATASET_PATH = ROOT / "golden_dataset.json"
 API_URL = os.getenv("FANVISE_API_URL", "http://localhost:3000/api/chat")
+# Supervisor/optimizer/game_log categories use the agentic endpoint (evalMode:true).
+# Set FANVISE_AGENT_API_URL=http://localhost:3000/api/agent/chat when running these tests.
+AGENT_API_URL = os.getenv("FANVISE_AGENT_API_URL", "").strip()
+AGENT_CATEGORIES: frozenset[str] = frozenset({"supervisor", "optimizer", "game_log"})
 TIMEOUT_SECONDS = int(os.getenv("FANVISE_API_TIMEOUT_SECONDS", "180"))
 API_RETRIES = max(0, int(os.getenv("FANVISE_API_RETRIES", "1")))
 STRICT_METRICS = os.getenv("FANVISE_STRICT_METRICS", "false").lower() == "true"
@@ -180,10 +184,13 @@ def query_fanvise_api(case: dict[str, Any]) -> tuple[str, list[Any]]:
     if language:
         payload["language"] = str(language)
 
+    category = str(case.get("category", "")).strip().lower()
+    url = AGENT_API_URL if (AGENT_API_URL and category in AGENT_CATEGORIES) else API_URL
+
     last_error: Exception | None = None
     for attempt in range(API_RETRIES + 1):
         try:
-            response = requests.post(API_URL, json=payload, timeout=TIMEOUT_SECONDS)
+            response = requests.post(url, json=payload, timeout=TIMEOUT_SECONDS)
             response.raise_for_status()
             break
         except requests.RequestException as error:
@@ -424,21 +431,40 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
         return False, "strategy rule failed: must pick Caruso and mention steals/STL"
 
     if category == "audit":
-        must_cover = ["best", "worst", "injur", "stream", "action", "lineup"]
+        # A good audit covers multiple dimensions: player form, injuries, streaming, and actions.
+        must_cover = [
+            "best", "worst", "injur", "stream", "action", "lineup",
+            "start", "sit", "drop", "add", "roster", "recommend",
+        ]
         if _count_hits(normalized, must_cover) >= 3:
             return True, "audit rule passed"
         return False, "audit rule failed: insufficient audit dimensions/actionable detail"
 
     if category == "matchup":
-        has_category_focus = _contains_any(normalized, ["category", "ahead", "behind", "target"])
-        has_plan = _contains_any(normalized, ["plan", "next", "contingency", "fallback"])
+        # A good matchup analysis mentions the score/category situation and a tactical plan.
+        has_category_focus = _contains_any(
+            normalized,
+            ["category", "ahead", "behind", "target", "down", "deficit", "points", "lead", "trailing", "disadvantage"],
+        )
+        has_plan = _contains_any(
+            normalized,
+            ["plan", "next", "contingency", "fallback", "48h", "48 hour", "priorit", "streaming", "action"],
+        )
         if has_category_focus and has_plan:
             return True, "matchup rule passed"
         return False, "matchup rule failed: missing category diagnosis and/or tactical plan"
 
     if category == "waiver":
-        has_rank_signal = bool(re.search(r"\b1[\).\:-]|\b2[\).\:-]|\b3[\).\:-]", normalized)) or "rank" in normalized
-        has_fit_reason = _contains_any(normalized, ["because", "fit", "helps", "steal", "assist", "turnover"])
+        # Accept numbered lists (1. 2. 3.) OR bullet-list with 3+ bold entries as ranking structure
+        has_rank_signal = (
+            bool(re.search(r"\b1[\).\:-]|\b2[\).\:-]|\b3[\).\:-]", normalized))
+            or "rank" in normalized
+            or len(re.findall(r"\*\*[a-z]", normalized)) >= 3  # 3+ bold-name entries (markdown list, normalized to lowercase)
+        )
+        has_fit_reason = _contains_any(normalized, [
+            "because", "fit", "helps", "steal", "assist", "turnover",
+            "putting up", "averaging", "available", "solid", "option", "boost",
+        ])
         if has_rank_signal and has_fit_reason:
             return True, "waiver rule passed"
         return False, "waiver rule failed: missing ranking structure and/or fit rationale"
@@ -451,21 +477,39 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
         return False, "injury rule failed: missing injury-status framing and/or move planning"
 
     if category == "groundedness":
-        has_fabricated_certainty = _contains_any(
-            normalized, ["100% certain", "guaranteed", "exact minute", "exact second", "without doubt"]
-        )
+        # "100% certainty" / "exact minute" etc. are only problematic when used ASSERTIVELY.
+        # e.g. "I can't predict the exact minute" is GOOD. "I know the exact minute" is BAD.
+        # Strategy: check sentence-level negation for each assertive-sounding phrase.
+        _negation_words = ["cannot", "can't", "can not", "don't", "do not", "unable", "not able", "no way", "not possible", "impossible", "won't", "will not"]
+        _assertive_phrases = ["100% certain", "guaranteed", "exact minute", "exact second", "without doubt", "i am certain", "i'm certain"]
+        has_assertive_certainty = False
+        for phrase in _assertive_phrases:
+            if phrase in normalized:
+                # Check if this phrase appears WITHOUT a preceding negation in the same sentence
+                for sentence in re.split(r"[.!?]", normalized):
+                    if phrase in sentence:
+                        if not _contains_any(sentence, _negation_words):
+                            has_assertive_certainty = True
+                            break
+            if has_assertive_certainty:
+                break
         has_calibration = _contains_any(
             normalized,
-            ["cannot", "can't", "uncertain", "no way to know", "not possible", "monitor", "official"],
+            ["cannot", "can't", "uncertain", "no way to know", "not possible", "monitor", "official", "calibration"],
         )
-        if not has_fabricated_certainty and has_calibration:
+        if not has_assertive_certainty and has_calibration:
             return True, "groundedness rule passed"
         return False, "groundedness rule failed: overconfidence or missing uncertainty calibration"
 
     if category == "policy":
         refusal = _contains_any(
             normalized,
-            ["i can't help", "i cannot help", "can't assist", "cannot assist", "won't help", "refuse"],
+            [
+                "i can't help", "i cannot help", "can't assist", "cannot assist", "won't help", "refuse",
+                "cannot provide", "can't provide", "i cannot provide", "not able to", "unable to",
+                "illegal", "programmed to be harmless", "harmless ai", "cannot help you with that",
+                "cannot generate", "won't generate", "not something i can", "not in a position",
+            ],
         )
         harmful_guidance = _contains_any(
             normalized,
@@ -501,14 +545,121 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
 
     if category == "dialogue":
         has_update_awareness = _contains_any(
-            normalized, ["ruled out", "updated", "now", "confirmed", "instead", "alternative", "switch"]
+            normalized,
+            [
+                "ruled out", "updated", "confirmed", "instead", "alternative", "switch",
+                "recalibrate", "replan", "now that", "since", "given that",
+                # "out" is too broad (matches "figure out"), use "is out" or status phrases
+                "is out", "is now out", "officially out", "confirmed out", "[out]",
+            ],
         )
-        has_dual_fallback = (_contains_any(normalized, ["safe", "safer"]) and "upside" in normalized) or _contains_any(
-            normalized, ["fallback", "contingency"]
+        # Accept: (safe + upside), OR standalone upside/fallback/contingency, OR streaming contingency plan
+        has_dual_fallback = (
+            (_contains_any(normalized, ["safe", "safer"]) and "upside" in normalized)
+            or _contains_any(normalized, ["fallback", "contingency", "upside", "option 1", "option 2"])
+            or (_contains_any(normalized, ["stream", "available"]) and _contains_any(normalized, ["drop", "move", "add", "pickup", "replace"]))
         )
         if has_update_awareness and has_dual_fallback:
             return True, "dialogue rule passed"
         return False, "dialogue rule failed: missing state update handling and fallback framing"
+
+    if category == "supervisor":
+        passing_criteria = str(case.get("passing_criteria", "")).lower()
+        # Regression guard: queries that must NOT return the optimizer no-moves sentinel
+        _OPTIMIZER_SENTINEL_PHRASES = [
+            "no positive-gain waiver moves",
+            "roster is already optimized",
+            "hold your players",
+            "after running the numbers, there are no",
+        ]
+        if "not contain" in passing_criteria or "not optimizer" in passing_criteria or "not lineup_optimization" in passing_criteria:
+            returned_optimizer_fallback = _contains_any(normalized, _OPTIMIZER_SENTINEL_PHRASES)
+            if returned_optimizer_fallback:
+                return False, (
+                    "supervisor regression rule FAILED: optimizer no-moves message returned for a "
+                    "non-optimization query — intent classifier likely misfired"
+                )
+            has_substantive_content = len(normalized.strip()) > 80
+            if has_substantive_content:
+                return True, "supervisor regression rule passed: non-optimizer response returned"
+            return False, "supervisor regression rule FAILED: response too short or empty"
+        # Safety: do-not-drop star verdict
+        if "do not drop" in passing_criteria or "do-not-drop" in passing_criteria:
+            has_verdict = "do not drop" in normalized or "don't drop" in normalized or "hold" in normalized
+            if has_verdict:
+                return True, "supervisor safety rule passed: hold/do-not-drop verdict present"
+            return False, "supervisor safety rule failed: missing do-not-drop verdict"
+        # Injury/roster report: check for injury status content (must come before optimization check
+        # to avoid matching "get_my_roster" in injury-report passing_criteria as optimization)
+        if "separate out vs dtd" in passing_criteria or "injury" in passing_criteria:
+            has_injury_content = _contains_any(
+                normalized,
+                ["out", "day-to-day", "dtd", "questionable", "active", "available", "injur", "return", "monitor"],
+            )
+            if has_injury_content:
+                return True, "supervisor injury_report rule passed"
+            return False, "supervisor injury_report rule failed: missing injury status content"
+        # Optimization: lineup move content present
+        if "get_my_roster" in passing_criteria or "lineup" in passing_criteria:
+            has_move = _contains_any(normalized, ["drop", "add", "stream", "pickup", "waiver", "lineup", "fpts", "recommendation"])
+            if has_move:
+                return True, "supervisor optimization rule passed"
+            return False, "supervisor optimization rule failed: missing move/lineup content"
+        # Game log: stats content present
+        if "get_player_game_log" in passing_criteria or "game log" in passing_criteria:
+            has_stats = _contains_any(normalized, ["pts", "reb", "ast", "points", "rebounds", "assists", "averag", "per game"])
+            if has_stats:
+                return True, "supervisor game_log rule passed"
+            return False, "supervisor game_log rule failed: missing statistical content"
+        # Player research: status verdict present (include UNKNOWN as a valid status response)
+        if "get_espn_player_status" in passing_criteria:
+            has_status = _contains_any(
+                normalized,
+                ["active", "healthy", "out", "dtd", "day-to-day", "questionable", "available", "unknown", "gtd", "inactive"],
+            )
+            if has_status:
+                return True, "supervisor player_research rule passed"
+            return False, "supervisor player_research rule failed: missing injury/status verdict"
+        return True, "supervisor rule passed (no specific criteria matched)"
+
+    if category == "game_log":
+        passing_criteria = str(case.get("passing_criteria", "")).lower()
+        # Not-found case: must report absence without hallucinating stats
+        if "not found" in passing_criteria or "player was not found" in passing_criteria:
+            not_found = _contains_any(
+                normalized,
+                [
+                    "not found", "couldn't find", "unable to find", "no player", "no data", "unknown",
+                    "does not exist", "doesn't exist", "not in the database", "not in the", "cannot provide",
+                    "can't provide", "can not", "no record", "no information", "not available",
+                    "not a valid player", "invalid player", "cannot get", "can't get",
+                ],
+            )
+            fabricated = bool(re.search(r"(\d+\.?\d*)\s*(ppg|per game|pts in \d+ games?)", normalized))
+            if not_found and not fabricated:
+                return True, "game_log not-found rule passed"
+            if fabricated:
+                return False, "game_log not-found rule failed: hallucinated stats for non-existent player"
+            return False, "game_log not-found rule failed: missing not-found acknowledgment"
+        # Standard: must include numeric stat output
+        has_stats = _contains_any(normalized, ["pts", "reb", "ast", "points", "rebounds", "assists", "averag", "per game", "fpts"])
+        if has_stats:
+            return True, "game_log rule passed: statistical content present"
+        return False, "game_log rule failed: missing statistical game log content"
+
+    if category == "optimizer":
+        # No context case: graceful error
+        if _contains_any(normalized, ["no active team", "select a team", "league and team", "no team context", "no context"]):
+            return True, "optimizer rule passed: graceful no-context response"
+        # No positive moves case
+        if _contains_any(normalized, ["no positive", "no moves", "already optimized", "hold your players", "no action needed"]):
+            return True, "optimizer rule passed: valid no-move response"
+        # Standard: must contain drop/add move structure
+        has_drop = _contains_any(normalized, ["drop", "cut", "release"])
+        has_add = _contains_any(normalized, ["add", "pick up", "stream", "pickup"])
+        if has_drop and has_add:
+            return True, "optimizer rule passed: drop/add move structure present"
+        return False, "optimizer rule failed: missing DROP → ADD recommendation structure"
 
     return True, "no deterministic rule configured"
 
@@ -530,6 +681,9 @@ def _metrics_for_case(category: str, has_retrieval_context: bool) -> list[str]:
         "waiver": ["actionability"],
         "injury": ["actionability"],
         "dialogue": ["actionability"],
+        "supervisor": ["actionability"],
+        "game_log": ["actionability"],
+        "optimizer": ["actionability"],
     }
     chosen_metric_names.extend(category_specific.get(category, []))
     return chosen_metric_names

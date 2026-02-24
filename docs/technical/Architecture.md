@@ -8,15 +8,23 @@ The system acts as a strategic co-manager (General Manager) for ESPN Fantasy Bas
 
 ```mermaid
 graph TD
-    User((User)) -->|Iteract| WebUI[Next.js App Router]
+    User((User)) -->|Interact| WebUI[Next.js App Router]
     
     subgraph "Next.js Application (Vercel/Node.js)"
         WebUI --> API_Classic[Classic: /api/chat]
         WebUI --> API_Agent[Agentic: /api/agent/chat]
         API_Classic --> IntelligenceSvc[Intelligence Service]
-        API_Agent --> Supervisor[LangGraph Supervisor]
+        API_Agent --> Supervisor[LangGraph Supervisor - Router]
+        
+        Supervisor -->|lineup_optimization| LineupOptimizer[LineupOptimizerGraph<br/>6 nodes, 1 LLM call]
+        Supervisor -->|other intents| ReActLoop[ReAct Agent Loop<br/>tool-calling]
+        
+        LineupOptimizer --> OptimizerSvc[Optimizer Service<br/>Deterministic Math]
+        
         IntelligenceSvc --> Orchestrator[AI Service]
-        Supervisor --> Orchestrator[AI Service]
+        ReActLoop --> Orchestrator
+        LineupOptimizer --> Orchestrator
+        
         IntelligenceSvc --> LeagueSvc[League/Team Context Service]
         IntelligenceSvc --> RAG[RAG Pipeline/News Service]
     end
@@ -29,6 +37,7 @@ graph TD
     subgraph "Data & Persistence"
         RAG --> SupabaseVector[Supabase pgvector]
         LeagueSvc --> SupabaseDB[Supabase Postgres]
+        OptimizerSvc --> SupabaseDB
         API_Classic --> ESPN[ESPN Private API]
         API_Agent --> ESPN
     end

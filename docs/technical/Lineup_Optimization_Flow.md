@@ -129,25 +129,153 @@ Example internal service boundaries:
 - Ensure player-to-pro-team mapping reliability.
 - Enforce data freshness checks (fail safe when stale).
 
-### Phase 1: Deterministic Optimizer Core
+### Phase 1: Deterministic Optimizer Core ✅ COMPLETE (Feb 24, 2026)
 
-- Implement baseline lineup simulation for date window.
-- Implement candidate generation rules (drop/add).
-- Implement move simulation and point-delta ranking.
-- Add unit tests for slot legality and gain calculations.
+**Status:** Implemented and tested.
 
-### Phase 2: Chat Integration (No LangChain)
+**Delivered:**
 
-- Add optimization intent route in `IntelligenceService`.
-- Wire tool calls for roster, schedule, free agents, health.
-- Produce structured response payload for UI rendering.
-- Keep chat text generation separate from optimizer math.
+- **`src/services/optimizer.service.ts`** — Deterministic math engine with no LLM calls.
+  - `scoreDroppingCandidate(player, window, leagueAvgFpts)` → `DropScore` (0-100, league-relative)
+  - `scoreStreamingCandidate(freeAgent, window)` → `StreamScore` (volume-adjusted value)
+  - `buildDailyLineup(roster, rosterSlots, date, playingTeams)` → greedy slot assignment
+  - `validateLineupLegality(input)` → slot legality check with unfilled/benched warnings
+  - `simulateMove(drop, add, roster, slots, window)` → `SimulateMoveResult` with net gain
+  - `getStreamingCandidatesFromView()` / `getRosterValueFromView()` — DB view readers
 
-### Phase 3: Product UX and Safety
+- **`supabase/migrations/20260224000000_optimizer_views.sql`** — Pre-calculated DB views:
+  - `v_roster_value` — rolling 21-day per-player averages and volatility
+  - `v_streaming_candidates` — free-agent pool with current-week schedule context
+  - Performance indexes on `player_game_logs.game_date`, `player_status_snapshots.pro_team_id`, `nba_schedule(date, teams)`
 
-- Add recommendation cards ("Drop X, Add Y, +Z pts").
-- Show confidence and freshness indicators.
-- Require explicit user confirmation before transaction actions.
+- **Tool registry updates (`src/agents/shared/tool-registry.ts`):**
+  - `get_my_roster` — replaces boolean `isDropCandidate` with numeric `dropScore` (0-100) + `dropReasons[]`
+  - `get_free_agents` — adds `includeSchedule` flag that returns `gamesRemaining`, `gamesRemainingDates`, and `streamScore`
+  - `simulate_move` (**NEW**) — deterministic drop/add simulation tool
+  - `validate_lineup_legality` (**NEW**) — daily lineup legality checker
+
+- **Type updates (`src/agents/shared/types.ts`):**
+  - `RosterPlayerWithSchedule` — `dropScore` + `dropReasons` (replaces `isDropCandidate`)
+  - `FreeAgentWithSchedule` — new type with schedule context and `streamScore`
+  - `SimulateMoveOutput` — new type for tool output
+
+- **`src/services/optimizer.service.test.ts`** — 22 unit tests, all passing.
+  - `scoreDroppingCandidate`: 6 tests covering score signals, injury, schedule gaps, league-relativity
+  - `scoreStreamingCandidate`: 4 tests covering volume scoring, confidence tiers, edge cases
+  - `buildDailyLineup`: 3 tests covering slot assignment, OUT exclusion, bench placement
+  - `validateLineupLegality`: 4 tests covering legal/illegal states, UTIL slot, wasted starts
+  - `simulateMove`: 5 tests covering positive/negative netGain, legality, DTD warnings, breakdown
+
+### Phase 2: Agent Specialization & Parallel Execution ✅ COMPLETE (Feb 24, 2026)
+
+**Status:** Implemented. Zero TypeScript errors. All 55 tests passing.
+
+**Delivered:**
+
+- **`src/agents/shared/intent-classifier.ts`** — Deterministic regex classifier (saves 300-600ms per request).
+  - Pure function `classifyIntent(query: string): QueryIntent`
+  - 5 intent categories, ordered priority matching
+  - No LLM call, no async, no DB
+
+- **`src/agents/lineup-optimizer/state.ts`** — LangGraph `Annotation.Root` for optimizer graph state.
+  - All accumulated data: roster, free agents, matchup, schedule, scores, moves
+  - Pre-loaded `NbaGame[]` in state to share across nodes (zero duplicate schedule queries)
+
+- **`src/agents/lineup-optimizer/graph.ts`** — 6-node `StateGraph`. LLM fires only once.
+  - `parse_window` — extract optimization window (sync)
+  - `gather_data` — `Promise.all` for roster + schedule + free agents + league config (~800ms)
+  - `score_candidates` — `scoreDroppingCandidate` + `scoreStreamingCandidate` with pre-loaded games
+  - `simulate_moves` — `simulateMove` on top 3×5 pairs with pre-loaded games (zero extra schedule queries)
+  - `rank_moves` — sort by `netGain` desc, keep top 3 (sync)
+  - `compose_recommendation` — single focused LLM call (~600ms) using `prompts/agents/optimizer.ts`
+  - Error guard: if `parse_window` fails (no teamId/leagueId), skip to `compose_recommendation` with friendly message
+
+- **`prompts/agents/optimizer.ts`** — `getOptimizerPrompt()` (EN + EL).
+  - GM persona, structured "Drop X → Add Y, +Z fpts" output format
+  - `## The Knife` section for the single best move
+
+- **`src/agents/supervisor/agent.ts`** — Updated Supervisor:
+  - `classifyIntentNode` is now synchronous (was `async` + LLM call)
+  - New `runOptimizerNode` delegates `lineup_optimization` to `LineupOptimizerGraph`
+  - New routing: `classify_intent` → `routeAfterClassify` → `run_optimizer` or `agent`
+  - ReAct loop unchanged for all other intents
+
+- **`src/agents/supervisor/prompts.ts`** — `SUPERVISOR_SYSTEM_PROMPT` updated:
+  - `simulate_move` and `validate_lineup_legality` documented with usage guidance
+  - `INTENT_CLASSIFIER_PROMPT` removed (no longer needed)
+
+- **`src/agents/supervisor/tool-node-with-context.ts`** — Context injection extended:
+  - `simulate_move` and `validate_lineup_legality` added to `TOOLS_NEED_TEAM_ID` and `TOOLS_NEED_LEAGUE_ID`
+
+- **`src/services/optimizer.service.ts`** — `preloadedGames?: NbaGame[]` parameter added to:
+  - `scoreDroppingCandidate`, `scoreStreamingCandidate`, `simulateMove`
+  - When pre-loaded games provided, zero additional schedule DB queries per function call
+
+**Latency improvement (estimated):**
+
+| Scenario | Before | After |
+|---|---|---|
+| Intent classification | 300-600ms (Gemini LLM call) | <1ms (regex) |
+| "Optimize my lineup" full flow | ~8-12s (ReAct + multiple serial tool calls) | ~2-3s (parallel gather + 1 focused LLM) |
+| ReAct tool loop (other intents) | Unchanged | Unchanged |
+
+### Phase 3: Product UX and Safety ✅ COMPLETE (Feb 24, 2026)
+
+**Status:** Implemented. Zero TypeScript errors. All 55 tests passing.
+
+**Architecture: Stream Sentinel Token Protocol**
+
+The optimizer's structured move data is piped from server to client via a sentinel token appended at the end of the text stream:
+
+```
+[[FV_STREAM_READY]]...text content...[[FV_MOVES:BASE64_JSON]]
+```
+
+The frontend strips both tokens from the displayed text and uses the decoded JSON to render `MoveCard` components.
+
+**Delivered:**
+
+- **`src/types/optimizer.ts`** (new) — Shared client/server types.
+  - `MoveRecommendation` — serializable move shape (used in supervisor state, ChatMessage, MoveCard)
+  - `MovesStreamPayload` — the decoded payload structure: `{ moves, fetchedAt, windowStart, windowEnd }`
+
+- **`src/types/ai.ts`** — `ChatMessage` extended:
+  - `rankedMoves?: MoveRecommendation[]`
+  - `fetchedAt?: string` (freshness indicator ISO timestamp)
+  - `windowStart?: string`, `windowEnd?: string`
+
+- **`src/agents/supervisor/state.ts`** — `rankedMoves: MoveRecommendation[]` added to Supervisor state.
+
+- **`src/agents/supervisor/agent.ts`**:
+  - `runOptimizerNode` now sets `rankedMoves` in Supervisor state from optimizer result
+  - `streamSupervisor` accumulates `rankedMoves` from state chunks, then emits `[[FV_MOVES:BASE64]]` sentinel after the text stream completes
+  - `SupervisorResult` and `runSupervisor` now return `rankedMoves`
+
+- **`src/components/chat/move-card.tsx`** (new) — Rich recommendation card component.
+  - `SingleMoveCard` — one DROP→ADD card with:
+    - Confidence-coded border/badge (HIGH=emerald, MEDIUM=amber, LOW=orange)
+    - Large net gain display (+X.X fpts) with baseline→projected breakdown
+    - Drop score and stream score (0-100) for each player
+    - Warning badges (injury risk, low schedule, etc.)
+    - Freshness indicator ("X minutes ago")
+    - "Open ESPN" button (external link to ESPN waiver wire)
+    - "Done ✓" button to mark move as manually executed
+    - Executed state (card dims, green checkmark)
+  - `MoveCards` — container with section header and safety disclaimer
+
+- **`src/components/chat/message-bubble.tsx`** — Renders `MoveCards` below markdown content when `message.rankedMoves` is populated. Passes `leagueId` for ESPN deep-link generation.
+
+- **`src/components/chat/chat-interface.tsx`**:
+  - `extractMovesToken()` — parses `[[FV_MOVES:BASE64]]` from stream chunks
+  - Stream reading loop now extracts and strips the sentinel token
+  - After stream completion, attaches `rankedMoves`, `fetchedAt`, `windowStart`, `windowEnd` to the message object
+  - Passes `activeLeagueId` to `MessageBubble` for ESPN links
+
+**Safety / Confirmation UX:**
+- FanVise **never auto-executes** waiver transactions
+- Each card has two explicit actions: "Open ESPN" (external link) + "Done ✓" (manual confirmation)
+- Footer disclaimer: "FanVise recommends. You confirm and execute."
+- The "Done ✓" button marks the card as executed locally — purely informational, no API call
 
 ### Phase 4: Evaluation and Regression Guardrails
 

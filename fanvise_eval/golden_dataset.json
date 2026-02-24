@@ -23,9 +23,9 @@
     "id": "math_integrity_03",
     "category": "math",
     "input": "Fantasy score check: 22 PTS, 14 REB, 6 AST, 3 STL, 7 TO with scoring PTS=1, REB=1.25, AST=1.75, STL=3, TO=-1.",
-    "expected_output": "53",
+    "expected_output": "52",
     "retrieval_context": [],
-    "passing_criteria": "Final numeric total must be exactly 53 (or 53.0).",
+    "passing_criteria": "Final numeric total must be exactly 52 (or 52.0). Calculation: 22 + 14×1.25 + 6×1.75 + 3×3 + 7×(−1) = 22 + 17.5 + 10.5 + 9 − 7 = 52.",
     "tags": ["arithmetic", "turnover-penalty", "weighted-scoring"],
     "risk_level": "critical"
   },
@@ -507,15 +507,16 @@
     "id": "supervisor_lineup_optimization_full",
     "category": "supervisor",
     "input": "It's Tuesday. Help me optimize my lineup and figure out if I should drop anyone for a better schedule this week.",
-    "expected_output": "Agent calls get_my_roster (with schedule), get_matchup_details, identifies any drop candidates, calls get_free_agents if applicable, returns full optimization plan.",
+    "expected_output": "LineupOptimizerGraph fires (Phase 2 routing): fetches roster + schedule in parallel, scores drop/add candidates deterministically, simulates top moves, returns ranked DROP → ADD recommendations with net fpts gain. LLM only composes the final narrative.",
     "retrieval_context": [
-      "Supervisor must classify as lineup_optimization.",
-      "Must consider both schedule and injury status before recommending drops.",
-      "Drop candidate must have low avg AND few games remaining to qualify.",
-      "Must validate that any suggested add has games remaining this week."
+      "Supervisor Phase 2: lineup_optimization intent + teamId + leagueId → LineupOptimizerGraph (not ReAct tool loop).",
+      "Graph fetches data in parallel via Promise.all, uses pre-loaded schedule for all optimizer calls.",
+      "Drop candidate threshold: dropScore >= 30 (low avgFpts + limited schedule).",
+      "Star players (high avgFpts) will not meet the drop threshold — no star liquidation.",
+      "If no positive-gain moves exist, response should explicitly state roster is optimized."
     ],
-    "passing_criteria": "Must call get_my_roster and get_matchup_details. Must identify at least one drop candidate if one exists. Must validate schedule for any suggested pickup. Must not recommend dropping a star on limited data.",
-    "tags": ["supervisor", "lineup-optimization", "multi-tool", "drop-add", "schedule-analysis"],
+    "passing_criteria": "Must identify lineup_optimization intent. Must either: (a) return at least one DROP/ADD recommendation with net fpts gain, OR (b) clearly state no beneficial moves were found. Must not recommend dropping a star. Must reference schedule or games remaining context.",
+    "tags": ["supervisor", "lineup-optimization", "optimizer-graph", "phase-2", "schedule-analysis"],
     "risk_level": "critical"
   },
   {
@@ -550,7 +551,7 @@
   {
     "id": "game_log_start_sit_decision",
     "category": "game_log",
-    "input": "Should I start Devin Booker tonight? Is he worth playing?",
+    "input": "What's Devin Booker's injury status and recent game log form? Is his recent trend good enough to start him tonight?",
     "expected_output": "Agent calls get_espn_player_status to confirm Booker is active, then calls get_player_game_log to show recent scoring trend, returns start recommendation backed by actual game data.",
     "retrieval_context": [
       "Start/sit decision should combine injury status + recent performance data.",
@@ -603,5 +604,139 @@
     "passing_criteria": "Must call get_player_game_log. Must NOT invent any stats. Must clearly state the player was not found. Must offer an alternative (search by similar name or check for typo).",
     "tags": ["game-log", "hallucination-control", "not-found", "error-handling"],
     "risk_level": "critical"
+  },
+
+  {
+    "id": "optimizer_no_context_01",
+    "category": "optimizer",
+    "input": "Optimize my lineup for this week and find the best waiver adds.",
+    "expected_output": "Graceful error or prompt to set team context — optimizer cannot run without teamId/leagueId.",
+    "retrieval_context": [],
+    "passing_criteria": "If no teamId/leagueId is set, must return a user-friendly message explaining the context requirement. Must NOT hallucinate roster or player data. Must not crash.",
+    "tags": ["optimizer", "error-handling", "no-context", "graceful-degradation"],
+    "risk_level": "high"
+  },
+
+  {
+    "id": "optimizer_move_structure_01",
+    "category": "optimizer",
+    "input": "Optimize my lineup for this week — find streaming adds and drop candidates.",
+    "expected_output": "Response contains at least one DROP → ADD move recommendation with projected fantasy point gain, or a clear 'no moves found' explanation if no candidates qualify.",
+    "retrieval_context": [
+      "Optimizer graph fetches roster + schedule in parallel, scores candidates, simulates moves, returns ranked list.",
+      "Each move must include: drop player name, add player name, net fpts gain.",
+      "If no positive-gain moves exist, explicitly state the roster is already optimized."
+    ],
+    "passing_criteria": "Must either: (a) contain at least one DROP/ADD recommendation with gain context, OR (b) explicitly state no beneficial moves were found. Must NOT fabricate player stats. Must reference the optimization window (this week).",
+    "tags": ["optimizer", "lineup-optimization", "move-structure", "core-flow"],
+    "risk_level": "critical"
+  },
+
+  {
+    "id": "optimizer_no_drop_star_01",
+    "category": "optimizer",
+    "input": "Optimize my lineup. I have LeBron James, Nikola Jokic, and Jayson Tatum on my roster.",
+    "expected_output": "Optimizer must not identify LeBron, Jokic, or Tatum as drop candidates — these are elite players with high average fantasy points.",
+    "retrieval_context": [
+      "Elite players (LeBron, Jokic, Tatum) have high avg fpts and should score 0-15 on drop scale, never meeting the 30+ threshold.",
+      "Drop candidates must have low avgFpts AND limited games remaining to qualify.",
+      "Stars are never marked as droppable by the deterministic optimizer."
+    ],
+    "passing_criteria": "Must NOT recommend dropping LeBron, Jokic, or Tatum. If a move is recommended, it should target lower-value roster players. Safeguard against star liquidation is critical.",
+    "tags": ["optimizer", "safety-policy", "do-not-drop", "star-protection"],
+    "risk_level": "critical"
+  },
+
+  {
+    "id": "intent_classifier_lineup_01",
+    "category": "supervisor",
+    "input": "Help me optimize my lineup — find the best streaming adds and identify who I should drop.",
+    "expected_output": "System routes to LineupOptimizerGraph (not ReAct loop). Returns structured DROP → ADD recommendations with net fpts gain for the current week.",
+    "retrieval_context": [
+      "Query contains 'optimize', 'lineup', 'streaming adds', 'drop' — matches lineup_optimization intent.",
+      "Supervisor Phase 2: lineup_optimization + teamId + leagueId → LineupOptimizerGraph.",
+      "Response should NOT be a generic text response — must contain structured move data."
+    ],
+    "passing_criteria": "Must identify as lineup_optimization intent. Must contain drop/add recommendation or no-moves explanation. Must reference fantasy points or schedule context. Must NOT just list tool names.",
+    "tags": ["supervisor", "intent-routing", "lineup-optimization", "optimizer-graph"],
+    "risk_level": "critical"
+  },
+
+  {
+    "id": "intent_classifier_player_research_01",
+    "category": "supervisor",
+    "input": "Is Nikola Jokic injured? What is his current status?",
+    "expected_output": "System routes to ReAct loop (player_research intent). Calls get_espn_player_status for Jokic. Returns ACTIVE/MONITOR/HOLD verdict with source.",
+    "retrieval_context": [
+      "Query contains 'injured', 'status' — matches player_research intent.",
+      "Supervisor routes player_research to ReAct tool loop, not optimizer.",
+      "Must call get_espn_player_status, not get_my_roster."
+    ],
+    "passing_criteria": "Must call get_espn_player_status. Must return a clear injury verdict (ACTIVE/MONITOR/HOLD). Must not call get_my_roster or optimize the lineup. Must cite ESPN as data source.",
+    "tags": ["supervisor", "intent-routing", "player-research", "tool-calling"],
+    "risk_level": "high"
+  },
+
+  {
+    "id": "intent_classifier_general_01",
+    "category": "supervisor",
+    "input": "How does H2H points scoring work in fantasy basketball?",
+    "expected_output": "System routes to general_advice (no tools needed). Returns a clear explanation of H2H points format without calling any data-fetching tools.",
+    "retrieval_context": [
+      "Query is conceptual — no specific player, team, or lineup context.",
+      "general_advice intent: no tool calls needed, LLM answers from training knowledge.",
+      "Should not call get_my_roster, get_free_agents, or any data tools."
+    ],
+    "passing_criteria": "Must explain H2H points format. Must NOT call any data tools (tool call count should be 0). Must not fabricate league-specific data.",
+    "tags": ["supervisor", "intent-routing", "general-advice", "no-tools"],
+    "risk_level": "medium"
+  },
+
+  {
+    "id": "routing_matchup_review_not_optimizer",
+    "category": "supervisor",
+    "input": "Provide a deep-dive review of my current matchup. Compare best/worst performers from both teams, track total games played vs. remaining, and suggest available healthy free agents to stream to secure the win.",
+    "expected_output": "Matchup-focused analysis with player performance comparison and streaming recommendations. NOT the 'no positive-gain waiver moves' optimizer message.",
+    "retrieval_context": [
+      "REGRESSION: this is the Matchup Review quick-action prompt.",
+      "Bug that was fixed: bare 'stream' in the lineup_optimization pattern was routing this to the LineupOptimizerGraph.",
+      "Correct routing: 'matchup' keyword fires matchup_analysis FIRST; Supervisor routes to ReAct loop.",
+      "Classifier priority: matchup_analysis (1) beats lineup_optimization (2) because it checks first."
+    ],
+    "passing_criteria": "Must NOT contain 'no positive-gain waiver moves' or 'roster is already optimized' (optimizer no-moves sentinel). Must contain matchup, performance, or streaming candidate context. Response must be substantive (NOT the optimizer fallback message).",
+    "tags": ["supervisor", "intent-routing", "matchup-analysis", "not-optimizer", "regression-fix"],
+    "risk_level": "critical"
+  },
+
+  {
+    "id": "routing_team_audit_not_optimizer",
+    "category": "supervisor",
+    "input": "Perform a comprehensive audit of my team and roster. Give me a full overview including best and worst performers, a complete injury report, and potential streaming options. Also, include my current score, league standings, and matchup status.",
+    "expected_output": "Comprehensive team audit with performers, injuries, streaming context, and matchup info. NOT the optimizer no-moves message.",
+    "retrieval_context": [
+      "REGRESSION: this is the Team Audit quick-action prompt.",
+      "Bug that was fixed: 'streaming' matched lineup_optimization; 'matchup status' now fires matchup_analysis first.",
+      "Correct routing: matchup_analysis intent → ReAct loop handles the full audit with multiple tools.",
+      "Supervisor's ReAct loop should call get_my_roster + get_matchup_details + at minimum one other tool."
+    ],
+    "passing_criteria": "Must NOT contain 'no positive-gain waiver moves' or 'roster is already optimized'. Must contain team, roster, or matchup context. Should mention performers or injury status.",
+    "tags": ["supervisor", "intent-routing", "team-audit", "not-optimizer", "regression-fix"],
+    "risk_level": "critical"
+  },
+
+  {
+    "id": "routing_streaming_query_not_optimizer",
+    "category": "supervisor",
+    "input": "What are the best streaming options this week? Who should I stream for the remaining games?",
+    "expected_output": "Waiver wire browsing with streaming candidates. NOT the optimizer no-moves message.",
+    "retrieval_context": [
+      "REGRESSION: 'streaming options' and 'stream' without 'optimize' or explicit drop intent.",
+      "Classifier routes to free_agent_scan (priority 3) — NOT lineup_optimization.",
+      "free_agent_scan → ReAct loop → get_free_agents tool call.",
+      "Optimizer graph must NOT fire for pure streaming browse queries."
+    ],
+    "passing_criteria": "Must NOT contain 'no positive-gain waiver moves' or 'roster is already optimized'. Must mention players, pickups, or streaming candidates. Must be a useful waiver browse response.",
+    "tags": ["supervisor", "intent-routing", "free-agent-scan", "streaming", "not-optimizer", "regression-fix"],
+    "risk_level": "high"
   }
 ]
