@@ -1,10 +1,10 @@
 # System Architecture
 
-FanVise is an AI-native fantasy sports intelligence platform designed as a "Strategist" layer on top of existing fantasy ecosystem. The application is built as a unified, standalone Next.js solution that integrates data ingestion, AI orchestration, and RAG pipelines into a single high-performance deployment.
+FanVise is an AI-native fantasy sports intelligence platform designed as a "General Manager" layer on top of existing fantasy ecosystem. The application is built as a unified, standalone Next.js solution that integrates data ingestion, AI orchestration, and RAG pipelines into a single high-performance deployment.
 
 ## High-Level Overview
 
-The system acts as a strategic co-manager for ESPN Fantasy Basketball. It aggregates structured data (league rosters, scoring) and unstructured intelligence (news, injury reports) to provide contextually grounded strategic advice. It employs a **Dual-Environment Architecture**, offering both high-performance cloud inference and privacy-focused local models.
+The system acts as a strategic co-manager (General Manager) for ESPN Fantasy Basketball. It aggregates structured data (league rosters, scoring) and unstructured intelligence (news, injury reports) to provide contextually grounded strategic advice. It employs a **Dual-Environment Architecture**, offering both high-performance cloud inference and privacy-focused local models.
 
 ```mermaid
 graph TD
@@ -43,7 +43,7 @@ The system provides two active AI execution paths:
 
 ## Key Architectural Principles
 
-1. **Perspective Engine**: The core logic is decoupled from a single user's team. The system can adopt the "perspective" of any team in a league to analyze strengths and weaknesses.
+1. **Setting-Driven Perspective**: The core logic is driven by the user's `activeLeagueId` and `activeTeamId` settings. The system can switch perspective to any team in a league (e.g., to simulate an opponent) simply by changing these settings.
 2. **AI-First Orchestration**: The AI is not a separate feature but the primary interface for decision-making.
 3. **Hybrid RAG**: Combines structured league data (rosters, scoring) with unstructured news and intelligence (injury reports, trade rumors).
 4. **Edge Readiness**: Built on Next.js 15+ with Tailwind CSS v4, optimized for low latency and responsive interactions.

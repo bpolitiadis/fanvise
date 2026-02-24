@@ -7,7 +7,7 @@ Understanding the *why* and *what* of FanVise.
 
 *   **[Product Requirements Document (PRD)](./genesis/FanVise%20PRD_%20AI%20Fantasy%20Sports%20Strategy.md)**
     *   Defines the core value proposition: "The Intelligent Edge for Fantasy Basketball."
-    *   Outlines the "FanVise Strategist" persona and "Perspective Engine."
+    *   Outlines the "General Manager" persona and simplified Perspective logic.
     *   Details the pivot to a Dual-Environment Architecture (Next.js + Supabase).
 
 ## 🛠️ Technical Documentation

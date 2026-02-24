@@ -29,7 +29,7 @@ Both chat routes apply the same core safety and delivery patterns:
 ## Core Foundation Services
 
 - **AI Service (`src/services/ai.service.ts`)**: Provider-agnostic model gateway for streaming, embeddings, and environment-based routing (Gemini or Ollama).
-- **Prompt Engine (`prompts/index.ts`)**: Builds strict, context-grounded strategist instructions.
+- **Prompt Engine (`prompts/index.ts`)**: Builds strict, context-grounded General Manager instructions.
 - **League Service (`src/services/league.service.ts`)**: Aggregates ESPN + Supabase data into an intelligence snapshot.
 - **News Service (`src/services/news.service.ts`)**: Manages ingestion, intelligence extraction, and vector retrieval.
 - **Daily Leaders Service (`src/services/daily-leaders.service.ts`)**: Provides per-period performance context for chat and sync flows.
