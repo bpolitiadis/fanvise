@@ -186,6 +186,24 @@ export async function getPlayerGameLog(
       const playerData = raw[0];
 
       if (playerData?.stats?.length) {
+        // Resolve scoringPeriodId → calendar date from nba_schedule so that
+        // game_date is always populated. Without it, v_roster_value silently
+        // excludes all rows (its WHERE clause filters on game_date).
+        const scoringPeriodIds = playerData.stats.map((s) => s.scoringPeriodId);
+        const { data: scheduleRows } = await db
+          .from("nba_schedule")
+          .select("scoring_period_id, date")
+          .eq("season_id", seasonId)
+          .in("scoring_period_id", scoringPeriodIds)
+          .or(`home_team_id.eq.${playerData.proTeamId},away_team_id.eq.${playerData.proTeamId}`);
+
+        const periodToDate = new Map<number, string>(
+          (scheduleRows ?? []).map((r) => [
+            r.scoring_period_id as number,
+            (r.date as string).split("T")[0],
+          ])
+        );
+
         const rows = playerData.stats.map((s) => {
           const statsMap = s.stats ?? {};
           const get = (id: number) => safeNum(statsMap[String(id)]);
@@ -195,6 +213,7 @@ export async function getPlayerGameLog(
             player_name: resolvedName,
             season_id: seasonId,
             scoring_period_id: s.scoringPeriodId,
+            game_date: periodToDate.get(s.scoringPeriodId) ?? null,
             pro_team_id: playerData.proTeamId,
             pts: get(0),
             reb: get(6),

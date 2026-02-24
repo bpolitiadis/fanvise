@@ -192,7 +192,9 @@ export async function upsertLeague(
             draft_detail: draftDetail || {},
             positional_ratings: positionalRatings || {},
             live_scoring: liveScoring || {},
-            last_updated_at: new Date().toISOString()
+            last_updated_at: new Date().toISOString(),
+            roster_snapshot: teams,
+            roster_snapshot_at: new Date().toISOString()
         });
 
     if (error) {

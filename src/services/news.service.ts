@@ -51,7 +51,7 @@ interface SearchNewsItem {
     is_injury_report?: boolean | null;
     injury_status?: string | null;
     expected_return_date?: string | null;
-    impacted_player_ids?: string[] | null;
+    impacted_player_names?: string[] | null;
     trust_level?: number | null;
     similarity?: number | null;
 }
@@ -76,7 +76,7 @@ export interface IntelligenceObject {
     is_injury_report: boolean;
     injury_status: string | null;
     expected_return_date: string | null;
-    impacted_player_ids: string[];
+    impacted_player_names: string[];
     trust_level: number;
 }
 
@@ -128,7 +128,7 @@ const extractIntelligence = async (text: string): Promise<IntelligenceObject> =>
         - is_injury_report: (boolean) Is this primarily an injury update?
         - injury_status: (string|null) OFS, GTD, OUT, Day-to-Day, Questionable, or SSPD (Suspended).
         - expected_return_date: (string|null) ISO format if mentioned.
-        - impacted_player_ids: (string[]) List of player names affected.
+        - impacted_player_names: (string[]) List of player names affected.
 
         Snippet: "${text}"
     `;
@@ -158,8 +158,8 @@ const extractIntelligence = async (text: string): Promise<IntelligenceObject> =>
             is_injury_report: Boolean(intelligence.is_injury_report),
             injury_status: typeof intelligence.injury_status === 'string' ? intelligence.injury_status : null,
             expected_return_date: typeof intelligence.expected_return_date === 'string' ? intelligence.expected_return_date : null,
-            impacted_player_ids: Array.isArray(intelligence.impacted_player_ids)
-                ? intelligence.impacted_player_ids.filter((id): id is string => typeof id === 'string')
+            impacted_player_names: Array.isArray(intelligence.impacted_player_names)
+                ? intelligence.impacted_player_names.filter((n): n is string => typeof n === 'string')
                 : [],
             trust_level: 1 // Default, overridden by feed
         };
@@ -174,7 +174,7 @@ const extractIntelligence = async (text: string): Promise<IntelligenceObject> =>
             is_injury_report: false,
             injury_status: null,
             expected_return_date: null,
-            impacted_player_ids: [],
+            impacted_player_names: [],
             trust_level: 1
         };
     }
@@ -472,7 +472,7 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
                 is_injury_report: false,
                 injury_status: null,
                 expected_return_date: null,
-                impacted_player_ids: [],
+                impacted_player_names: [],
                 trust_level: 1,
             };
         });
@@ -511,7 +511,7 @@ async function processItem(item: RssIngestItem, source: string, watchlist: strin
             is_injury_report: intelligence.is_injury_report,
             injury_status: intelligence.injury_status,
             expected_return_date: normalizeExpectedReturnDate(intelligence.expected_return_date),
-            impacted_player_ids: intelligence.impacted_player_ids,
+            impacted_player_names: intelligence.impacted_player_names,
             trust_level: (FEEDS.find(f => f.source === source)?.trust_level || intelligence.trust_level),
             guid: item.guid || null
         });
@@ -689,7 +689,7 @@ export async function searchNews(query: string, limit = 15) {
                 if (orClauses.length === 0) return [];
                 const { data: lexicalData, error: lexicalError } = await supabase
                     .from('news_items')
-                    .select('id,title,url,content,summary,full_content,published_at,source,player_name,sentiment,category,impact_backup,is_injury_report,injury_status,expected_return_date,impacted_player_ids,trust_level')
+                    .select('id,title,url,content,summary,full_content,published_at,source,player_name,sentiment,category,impact_backup,is_injury_report,injury_status,expected_return_date,impacted_player_names,trust_level')
                     .gt('published_at', cutoff)
                     .or(orClauses.join(','))
                     .order('published_at', { ascending: false })

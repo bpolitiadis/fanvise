@@ -71,4 +71,8 @@ export interface DbLeague {
     teams?: DbTeam[];
     /** ISO timestamp of the last successful ESPN sync for this league. */
     last_updated_at?: string;
+    /** Full roster snapshot as of roster_snapshot_at — used as ESPN offline fallback. */
+    roster_snapshot?: unknown;
+    /** ISO timestamp when roster_snapshot was last written. */
+    roster_snapshot_at?: string | null;
 }
