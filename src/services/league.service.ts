@@ -31,7 +31,9 @@ import type {
     DbLeague,
     DbTeam
 } from '@/types/league';
-import { getPositionName } from '@/lib/espn/constants';
+import { getPositionName, ESPN_PRO_TEAM_MAP } from '@/lib/espn/constants';
+import { resolveTeamName } from '@/lib/espn/mappers';
+import { getCurrentMatchupWindow } from '@/lib/time/matchup-window';
 
 // Core types now imported from @/types/league and @/types/fantasy
 type JsonObject = Record<string, unknown>;
@@ -241,6 +243,8 @@ function toTeamContext(dbTeam: DbTeam, roster?: PlayerContext[]): TeamContext {
                 ties: dbTeam.ties || 0,
             }
             : undefined,
+        pointsFor: dbTeam.pointsFor,
+        pointsAgainst: dbTeam.pointsAgainst,
         roster,
     };
 }
@@ -333,12 +337,14 @@ async function fetchMatchupFromEspnUncached(
                     String(s.seasonId) === targetSeasonId
                 );
 
+                const rawProTeamId = typeof player?.proTeamId === 'number' ? player.proTeamId : 0;
                 return {
                     id: String(entry.playerId),
                     firstName: player?.firstName || '',
                     lastName: player?.lastName || '',
                     fullName: player?.fullName || 'Unknown Player',
-                    proTeam: String(player?.proTeamId || ''),
+                    proTeam: ESPN_PRO_TEAM_MAP[rawProTeamId] ?? String(rawProTeamId),
+                    proTeamId: rawProTeamId,
                     position: getPositionName(player?.defaultPositionId || ''),
                     injuryStatus: player?.injuryStatus || 'ACTIVE',
                     isInjured: player?.injured || false,
@@ -361,8 +367,7 @@ async function fetchMatchupFromEspnUncached(
         const getTeamDetails = (tid: number) => {
             const team = matchupData.teams?.find((t: EspnTeam) => t.id === tid);
             if (!team) return { name: `Team ${tid}`, abbrev: '' };
-            const name = (team.location && team.nickname) ? `${team.location} ${team.nickname}` : (team.name || `Team ${tid}`);
-            return { name, abbrev: team.abbrev || '' };
+            return { name: resolveTeamName(team), abbrev: team.abbrev || '' };
         };
 
         const myTeamDetails = getTeamDetails(teamIdNum);
@@ -458,13 +463,7 @@ async function calculateScheduleDensity(
 ): Promise<ScheduleContext | undefined> {
     if (!myTeam.roster) return undefined;
 
-    // Define the time window: Today -> Today + 6 days
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0); // Normalize to start of day to catch early games (e.g. UTC midnight)
-
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 6);
-    endDate.setHours(23, 59, 59, 999); // Normalize to end of day
+    const { start: startDate, end: endDate } = getCurrentMatchupWindow();
 
     try {
         const games = await getGamesInRangeCached(startDate.toISOString(), endDate.toISOString());
@@ -473,9 +472,9 @@ async function calculateScheduleDensity(
         const countGames = (roster: PlayerContext[]) => {
             let manGames = 0;
             for (const player of roster) {
-                const proTeamId = parseInt(player.proTeam);
-                // Count how many times this pro team appears in the games list
-                const gamesForPlayer = games.filter(g => g.homeTeamId === proTeamId || g.awayTeamId === proTeamId).length;
+                const teamId = player.proTeamId ?? parseInt(player.proTeam);
+                if (!Number.isFinite(teamId) || teamId <= 0) continue;
+                const gamesForPlayer = games.filter(g => g.homeTeamId === teamId || g.awayTeamId === teamId).length;
                 manGames += gamesForPlayer;
             }
             return manGames;
@@ -845,14 +844,36 @@ export function formatSnapshotForPrompt(snapshot: IntelligenceSnapshot): string 
         `Scoring: ${JSON.stringify(snapshot.league.scoringSettings)}`,
     ];
 
+    if (snapshot.myTeam.pointsFor !== undefined) {
+        lines.push(`Season Points: ${snapshot.myTeam.pointsFor} PF / ${snapshot.myTeam.pointsAgainst ?? 0} PA`);
+    }
+
     if (snapshot.opponent) {
-        lines.push(`Opponent: ${snapshot.opponent.name} (${snapshot.opponent.manager})`);
+        const oppPts = snapshot.opponent.pointsFor !== undefined
+            ? ` | ${snapshot.opponent.pointsFor} PF / ${snapshot.opponent.pointsAgainst ?? 0} PA`
+            : '';
+        lines.push(`Opponent: ${snapshot.opponent.name} (${snapshot.opponent.manager})${oppPts}`);
     }
 
     if (snapshot.matchup) {
         lines.push(
             `Score: ${snapshot.matchup.myScore} - ${snapshot.matchup.opponentScore} ` +
             `(${snapshot.matchup.differential > 0 ? '+' : ''}${snapshot.matchup.differential})`
+        );
+    }
+
+    if (snapshot.freeAgents?.length) {
+        lines.push(`Free Agents: ${snapshot.freeAgents.length} available`);
+    }
+
+    if (snapshot.transactions?.length) {
+        lines.push(`Recent Transactions: ${snapshot.transactions.length}`);
+    }
+
+    if (snapshot.schedule) {
+        lines.push(
+            `Schedule: My ${snapshot.schedule.myGamesRemaining} games remaining, ` +
+            `Opponent ${snapshot.schedule.opponentGamesRemaining} games remaining`
         );
     }
 

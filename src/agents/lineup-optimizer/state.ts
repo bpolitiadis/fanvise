@@ -14,6 +14,7 @@ import { Annotation } from "@langchain/langgraph";
 import type { NbaGame } from "@/services/optimizer.service";
 import type { DropScore, StreamScore, SimulateMoveResult } from "@/services/optimizer.service";
 import type { MoveRecommendation } from "@/types/optimizer";
+import { getCurrentMatchupWindow } from "@/lib/time/matchup-window";
 
 // Re-export for graph-internal use
 export type { MoveRecommendation as RankedMove };
@@ -70,17 +71,12 @@ export const LineupOptimizerAnnotation = Annotation.Root({
 
   windowStart: Annotation<string>({
     reducer: (_, next) => next,
-    default: () => new Date().toISOString(),
+    default: () => getCurrentMatchupWindow().start.toISOString(),
   }),
 
   windowEnd: Annotation<string>({
     reducer: (_, next) => next,
-    default: () => {
-      const end = new Date();
-      end.setDate(end.getDate() + (7 - end.getDay()));
-      end.setHours(23, 59, 59, 999);
-      return end.toISOString();
-    },
+    default: () => getCurrentMatchupWindow().end.toISOString(),
   }),
 
   // ── Gathered Data ──────────────────────────────────────────────────────────

@@ -35,6 +35,9 @@ You have access to these tools. Choose them based on what the question actually 
 → Never call refresh_player_news for multiple players in the same turn unless all of them had 0 results from get_player_news.
 → Order of operations: get_espn_player_status → get_player_news → [ONLY if count=0] refresh_player_news
 
+**refresh_player_status(playerName)**
+→ Use when: The user explicitly questions if the data from your previous answer is stale, asks to "force refresh", or demands the absolute latest up-to-the-minute injury updates. It completely bypasses the DB cache to pull directly from live ESPN/Rotowire feeds. Do not use during normal audits unless explicitly requested.
+
 **get_player_game_log(playerName, lastNGames?)**
 → Use when: The user asks about a player's recent form, consistency, hot/cold streak, or wants to see actual game stats (pts/reb/ast/FG%…). Also use when evaluating a free agent add or a start/sit decision where performance trend matters. Returns per-game box scores + averages over the window.
 

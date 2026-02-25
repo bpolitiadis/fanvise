@@ -5,7 +5,7 @@ export class EspnClient {
     private swid?: string;
     private s2?: string;
 
-    constructor(leagueId: string, year: string, sport: string = "ffl", swid?: string, s2?: string) {
+    constructor(leagueId: string, year: string, sport: string = "fba", swid?: string, s2?: string) {
         this.leagueId = leagueId;
         this.year = year;
         this.sport = sport;
@@ -211,7 +211,7 @@ export class EspnClient {
 
         // Construct filters similar to espn-api python lib
         const filterStatus = { "value": ["FREEAGENT", "WAIVERS"] };
-        const filterSlotIds = positionId ? { "value": [positionId] } : undefined;
+        const filterSlotIds = typeof positionId === "number" ? { "value": [positionId] } : undefined;
 
         const filters = {
             "players": {

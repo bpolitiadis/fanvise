@@ -44,6 +44,7 @@ import { buildIntelligenceSnapshot, fetchLeagueForTool } from "@/services/league
 import { ScheduleService } from "@/services/schedule.service";
 import { USE_LOCAL_AI, OLLAMA_BASE_URL } from "@/agents/shared/ai-config";
 import type { SupportedLanguage } from "@/prompts/types";
+import { getCurrentMatchupWindow } from "@/lib/time/matchup-window";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -141,18 +142,15 @@ const parseWindowNode = (
     };
   }
 
-  const now = new Date();
-  const weekEnd = new Date(now);
-  weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
-  weekEnd.setHours(23, 59, 59, 999);
+  const { start: windowStart, end: windowEnd } = getCurrentMatchupWindow();
 
   console.log(
-    `[Optimizer] parse_window | team=${state.teamId} league=${state.leagueId} window=${now.toISOString().slice(0, 10)} → ${weekEnd.toISOString().slice(0, 10)}`
+    `[Optimizer] parse_window | team=${state.teamId} league=${state.leagueId} window=${windowStart.toISOString().slice(0, 10)} → ${windowEnd.toISOString().slice(0, 10)}`
   );
 
   return {
-    windowStart: now.toISOString(),
-    windowEnd: weekEnd.toISOString(),
+    windowStart: windowStart.toISOString(),
+    windowEnd: windowEnd.toISOString(),
   };
 };
 

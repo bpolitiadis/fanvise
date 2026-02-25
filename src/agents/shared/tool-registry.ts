@@ -16,11 +16,13 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { EspnClient } from "@/lib/espn/client";
+import { resolveTeamName } from "@/lib/espn/mappers";
 import { PlayerService } from "@/services/player.service";
 import { buildIntelligenceSnapshot, fetchLeagueForTool } from "@/services/league.service";
 import { searchNews, searchNewsWithLiveFetch, searchPlayerStatusSnapshots, fetchPlayerSpecificNews, extractPlayerCardData, ingestPlayerCardData } from "@/services/news.service";
 import { ScheduleService } from "@/services/schedule.service";
 import { getPlayerGameLog } from "@/services/game-log.service";
+import { getCurrentMatchupWindow } from "@/lib/time/matchup-window";
 import {
   scoreDroppingCandidate,
   scoreStreamingCandidate,
@@ -128,24 +130,24 @@ export const getPlayerNewsTool = tool(
     //   2. ESPN playercard ingest — only when espnPlayerId is provided.
     //      kona_playercard returns structured Rotowire injury data (status, type,
     //      expected return, season outlook) that is more authoritative than any RSS snippet.
-    const liveSearchPromise = searchNewsWithLiveFetch(playerName, limit);
+    const liveSearchPromise = searchNewsWithLiveFetch(playerName, limit, { background: true });
 
     const cardIngestPromise: Promise<boolean> = espnPlayerId
       ? (async () => {
-          try {
-            const client = new EspnClient(DEFAULT_LEAGUE_ID, seasonId, sport, swid, s2);
-            const cardData = await client.getPlayerCard(espnPlayerId);
-            const players = Array.isArray(cardData?.players) ? cardData.players as Array<Record<string, unknown>> : [];
-            const playerObj = (players[0]?.player ?? {}) as Record<string, unknown>;
-            const extracted = extractPlayerCardData(playerName, espnPlayerId, playerObj);
-            if (!extracted) return false;
-            return ingestPlayerCardData(extracted);
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.warn(`[get_player_news] playercard ingest failed for ${playerName}: ${msg}`);
-            return false;
-          }
-        })()
+        try {
+          const client = new EspnClient(DEFAULT_LEAGUE_ID, seasonId, sport, swid, s2);
+          const cardData = await client.getPlayerCard(espnPlayerId);
+          const players = Array.isArray(cardData?.players) ? cardData.players as Array<Record<string, unknown>> : [];
+          const playerObj = (players[0]?.player ?? {}) as Record<string, unknown>;
+          const extracted = extractPlayerCardData(playerName, espnPlayerId, playerObj);
+          if (!extracted) return false;
+          return ingestPlayerCardData(extracted);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[get_player_news] playercard ingest failed for ${playerName}: ${msg}`);
+          return false;
+        }
+      })()
       : Promise.resolve(false);
 
     const [{ items, newlyIngested }, cardIngested] = await Promise.all([liveSearchPromise, cardIngestPromise]);
@@ -210,12 +212,8 @@ export const getMyRosterTool = tool(
     const effectiveLeagueId = contextLeagueId?.trim() || DEFAULT_LEAGUE_ID;
     const snapshot = await buildIntelligenceSnapshot(effectiveLeagueId, teamId);
     const scheduleService = new ScheduleService();
-    const now = new Date();
-    const weekEnd = new Date(now);
-    weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
-    weekEnd.setHours(23, 59, 59, 999);
-
-    const gamesInWindow = await scheduleService.getGamesInRange(now, weekEnd);
+    const { start: windowStart, end: windowEnd } = getCurrentMatchupWindow();
+    const gamesInWindow = await scheduleService.getGamesInRange(windowStart, windowEnd);
 
     // Compute drop scores via the deterministic optimizer engine (league-relative)
     const dbLeague = await fetchLeagueForTool(effectiveLeagueId);
@@ -231,7 +229,7 @@ export const getMyRosterTool = tool(
 
     const rosterResults = await Promise.all(
       allPlayers.map(async (player) => {
-        const proTeamId = Number(player.proTeam);
+        const proTeamId = player.proTeamId ?? Number(player.proTeam);
         const playerGames = gamesInWindow.filter(
           (g) => g.homeTeamId === proTeamId || g.awayTeamId === proTeamId
         );
@@ -253,8 +251,8 @@ export const getMyRosterTool = tool(
 
         const dropScoreResult = await scoreDroppingCandidate(
           optimizerPlayer,
-          now,
-          weekEnd,
+          windowStart,
+          windowEnd,
           leagueAvgFpts
         );
 
@@ -332,17 +330,13 @@ export const getFreeAgentsTool = tool(
     }
 
     // Enriched mode: add per-player schedule context + streaming score
-    const now = new Date();
-    const weekEnd = new Date(now);
-    weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
-    weekEnd.setHours(23, 59, 59, 999);
-
     const scheduleService = new ScheduleService();
-    const gamesInWindow = await scheduleService.getGamesInRange(now, weekEnd);
+    const { start: windowStart, end: windowEnd } = getCurrentMatchupWindow();
+    const gamesInWindow = await scheduleService.getGamesInRange(windowStart, windowEnd);
 
     const enriched = await Promise.all(
       healthy.map(async (p): Promise<FreeAgentWithSchedule> => {
-        const proTeamId = Number(p.proTeam ?? 0);
+        const proTeamId = p.proTeamId ?? Number(p.proTeam ?? 0);
         const playerGames = gamesInWindow.filter(
           (g) => g.homeTeamId === proTeamId || g.awayTeamId === proTeamId
         );
@@ -361,7 +355,7 @@ export const getFreeAgentsTool = tool(
           percentOwned: p.ownership?.percentOwned ?? 0,
         };
 
-        const streamResult = await scoreStreamingCandidate(optimizerFa, now, weekEnd);
+        const streamResult = await scoreStreamingCandidate(optimizerFa, windowStart, windowEnd);
 
         return {
           playerId: p.id,
@@ -639,6 +633,39 @@ export const refreshPlayerNewsTool = tool(
   }
 );
 
+// ─── Tool: refresh_player_status ──────────────────────────────────────────────
+
+export const refreshPlayerStatusTool = tool(
+  async ({ playerName }: { playerName: string }) => {
+    console.log(`[Tool] refresh_player_status: explicitly fetching live status for "${playerName}"`);
+    const { refreshed, items } = await fetchPlayerSpecificNews(playerName, { feedTimeoutMs: 10_000 });
+
+    if (items.length === 0) {
+      return {
+        refreshed,
+        found: false,
+        message: `No new updates found for "${playerName}" across live feeds.`,
+      };
+    }
+
+    return {
+      refreshed,
+      found: true,
+      message: `Forced live refresh completed. Ingested ${refreshed} new updates. Found ${items.length} total recent items for ${playerName}.`,
+    };
+  },
+  {
+    name: "refresh_player_status",
+    description:
+      "Forces a live refresh of a player's injury and news status from external feeds. " +
+      "Call this when the user explicitly asks for an update and the DB data appears stale, " +
+      "to ensure the system triggers a synchronous live fetch.",
+    schema: z.object({
+      playerName: z.string().describe("Full name of the NBA player, e.g. 'Devin Booker'"),
+    }),
+  }
+);
+
 // ─── Tool: get_league_scoreboard ─────────────────────────────────────────────
 
 export const getLeagueScoreboardTool = tool(
@@ -662,9 +689,7 @@ export const getLeagueScoreboardTool = tool(
         | Record<string, unknown>
         | undefined;
       if (!team) return `Team ${teamId}`;
-      const loc = (team.location as string) ?? "";
-      const nick = (team.nickname as string) ?? "";
-      return loc && nick ? `${loc} ${nick}` : (team.name as string) ?? `Team ${teamId}`;
+      return resolveTeamName(team);
     };
 
     interface EspnMatchup {
@@ -820,9 +845,7 @@ export const getTeamSeasonStatsTool = tool(
           number
         >;
         const txCounter = (t.transactionCounter ?? {}) as Record<string, number>;
-        const loc = (t.location as string) ?? "";
-        const nick = (t.nickname as string) ?? "";
-        const name = loc && nick ? `${loc} ${nick}` : (t.name as string) ?? `Team ${t.id}`;
+        const name = resolveTeamName(t as Record<string, unknown>);
 
         return {
           teamId: String(t.id),
@@ -894,10 +917,7 @@ export const simulateMoveTool = tool(
 
     // Build optimizer-compatible roster from the ESPN snapshot
     const scheduleService = new ScheduleService();
-    const now = new Date();
-    const weekEnd = new Date(now);
-    weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
-    weekEnd.setHours(23, 59, 59, 999);
+    const { start: windowStart, end: windowEnd } = getCurrentMatchupWindow();
 
     const currentRoster: OptimizerRosterPlayer[] = (
       snapshot.myTeam.roster ?? []
@@ -906,7 +926,7 @@ export const simulateMoveTool = tool(
       playerName: p.fullName,
       position: p.position,
       eligibleSlots: [p.position],
-      proTeamId: Number(p.proTeam ?? 0),
+      proTeamId: p.proTeamId ?? Number(p.proTeam ?? 0),
       injuryStatus: p.injuryStatus ?? "ACTIVE",
       avgFpts: p.avgPoints ?? 0,
       totalFpts: p.totalPoints ?? 0,
@@ -956,8 +976,8 @@ export const simulateMoveTool = tool(
       addPlayer,
       currentRoster,
       rosterSlots,
-      now,
-      weekEnd
+      windowStart,
+      windowEnd
     );
 
     // Suppress unused variable warning
@@ -1044,7 +1064,7 @@ export const validateLineupLegalityTool = tool(
         const player = snapshot.myTeam.roster?.find(
           (r) => String(r.id) === String(p.playerId)
         );
-        return playingTeamIds.has(Number(player?.proTeam ?? 0));
+        return playingTeamIds.has(player?.proTeamId ?? Number(player?.proTeam ?? 0));
       })
       .map((p) => p.playerId);
 
@@ -1093,6 +1113,7 @@ export const ALL_TOOLS = [
   getEspnPlayerStatusTool,
   getPlayerNewsTool,
   refreshPlayerNewsTool,
+  refreshPlayerStatusTool,
   getPlayerGameLogTool,
   getMyRosterTool,
   getFreeAgentsTool,
@@ -1110,6 +1131,7 @@ export type FanviseToolName =
   | "get_espn_player_status"
   | "get_player_news"
   | "refresh_player_news"
+  | "refresh_player_status"
   | "get_player_game_log"
   | "get_my_roster"
   | "get_free_agents"

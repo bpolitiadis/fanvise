@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/utils/supabase/server";
 import { settingsSchema } from "@/lib/settings-schema";
+import { resolveTeamName } from "@/lib/espn/mappers";
 
 export type { SettingsSchema } from "@/lib/settings-schema";
 
@@ -71,9 +72,9 @@ export async function getTeamsForLeague(leagueId: string, seasonId?: string) {
       return [];
     }
 
-    return leagueData.teams.map((t: any) => ({
+    return leagueData.teams.map((t: { id: number; location?: string; nickname?: string; name?: string; abbrev?: string }) => ({
       id: t.id.toString(),
-      name: (t.location && t.nickname) ? `${t.location} ${t.nickname}` : (t.name || `Team ${t.id}`),
+      name: resolveTeamName(t),
       abbrev: t.abbrev || "",
     }));
   } catch (error) {

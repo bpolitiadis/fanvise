@@ -19,6 +19,7 @@
 
 import { createAdminClient } from "@/utils/supabase/server";
 import { ScheduleService, type NbaGame } from "@/services/schedule.service";
+import { getCurrentMatchupWindow } from "@/lib/time/matchup-window";
 
 export type { NbaGame };
 
@@ -179,17 +180,6 @@ function computeConfidence(
   return "LOW";
 }
 
-/**
- * Returns the end of the current fantasy week (Sunday 23:59:59 local).
- */
-function currentWeekEnd(): Date {
-  const now = new Date();
-  const sunday = new Date(now);
-  sunday.setDate(now.getDate() + (7 - now.getDay()));
-  sunday.setHours(23, 59, 59, 999);
-  return sunday;
-}
-
 // ─── Public Service Functions ─────────────────────────────────────────────────
 
 /**
@@ -212,8 +202,9 @@ export async function scoreDroppingCandidate(
   leagueAvgFpts = 25,
   preloadedGames?: NbaGame[]
 ): Promise<DropScore> {
-  const start = windowStart ?? new Date();
-  const end = windowEnd ?? currentWeekEnd();
+  const defaultWindow = getCurrentMatchupWindow();
+  const start = windowStart ?? defaultWindow.start;
+  const end = windowEnd ?? defaultWindow.end;
 
   const games =
     preloadedGames ?? await new ScheduleService().getGamesInRange(start, end);
@@ -292,8 +283,9 @@ export async function scoreStreamingCandidate(
   windowEnd?: Date,
   preloadedGames?: NbaGame[]
 ): Promise<StreamScore> {
-  const start = windowStart ?? new Date();
-  const end = windowEnd ?? currentWeekEnd();
+  const defaultWindow = getCurrentMatchupWindow();
+  const start = windowStart ?? defaultWindow.start;
+  const end = windowEnd ?? defaultWindow.end;
 
   const games =
     preloadedGames ?? await new ScheduleService().getGamesInRange(start, end);
@@ -511,8 +503,9 @@ export async function simulateMove(
   windowEnd?: Date,
   preloadedGames?: NbaGame[]
 ): Promise<SimulateMoveResult> {
-  const start = windowStart ?? new Date();
-  const end = windowEnd ?? currentWeekEnd();
+  const defaultWindow = getCurrentMatchupWindow();
+  const start = windowStart ?? defaultWindow.start;
+  const end = windowEnd ?? defaultWindow.end;
 
   const allGames =
     preloadedGames ?? await new ScheduleService().getGamesInRange(start, end);

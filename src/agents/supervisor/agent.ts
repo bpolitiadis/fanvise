@@ -32,6 +32,7 @@ import { classifyIntent } from "@/agents/shared/intent-classifier";
 import { runLineupOptimizer } from "@/agents/lineup-optimizer/graph";
 import type { QueryIntent } from "@/agents/shared/types";
 import type { MoveRecommendation, MovesStreamPayload } from "@/types/optimizer";
+import { getCurrentMatchupWindow } from "@/lib/time/matchup-window";
 
 // Re-export so API route can read the active provider for response headers
 export { ACTIVE_PROVIDER, ACTIVE_MODEL } from "@/agents/shared/ai-config";
@@ -466,13 +467,7 @@ export async function* streamSupervisor(
       fetchedAt: new Date().toISOString(),
       windowStart: finalWindowStart || new Date().toISOString(),
       windowEnd:
-        finalWindowEnd ||
-        (() => {
-          const e = new Date();
-          e.setDate(e.getDate() + (7 - e.getDay()));
-          e.setHours(23, 59, 59, 999);
-          return e.toISOString();
-        })(),
+        finalWindowEnd || getCurrentMatchupWindow().end.toISOString(),
     };
     const base64 = Buffer.from(JSON.stringify(payload)).toString("base64");
     yield `${MOVES_STREAM_TOKEN_PREFIX}${base64}${MOVES_STREAM_TOKEN_SUFFIX}`;

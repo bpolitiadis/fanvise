@@ -132,14 +132,27 @@ const extractStatsForPeriod = (entry: Record<string, unknown>, scoringPeriodId: 
     ? (player?.stats as Record<string, unknown>[])
     : [];
 
+  // Per-period actual stats: statSourceId=0 (actual), statSplitTypeId=1 (per-period)
   const exact = stats.find((stat) => {
+    const period = toNumber(stat.scoringPeriodId);
+    const sourceId = toNumber(stat.statSourceId);
+    const splitType = toNumber(stat.statSplitTypeId);
+    return period === scoringPeriodId && sourceId === 0 && splitType === 1;
+  });
+
+  if (exact) return exact;
+
+  // Relaxed match: correct period, actual source, any split type
+  const periodMatch = stats.find((stat) => {
     const period = toNumber(stat.scoringPeriodId);
     const sourceId = toNumber(stat.statSourceId);
     return period === scoringPeriodId && sourceId === 0;
   });
 
-  const fallback = stats.find((stat) => toNumber(stat.statSourceId) === 0) || stats[0];
-  return exact || fallback || null;
+  if (periodMatch) return periodMatch;
+
+  // Last resort: any actual stat entry (season totals)
+  return stats.find((stat) => toNumber(stat.statSourceId) === 0) || null;
 };
 
 export async function syncDailyLeadersForDate(
@@ -199,7 +212,7 @@ export async function upsertDailyLeadersForDate(options: UpsertDailyLeadersOptio
         : {};
       const fantasyPoints = toNumber(entry.appliedStatTotal)
         ?? toNumber(periodStats?.appliedTotal)
-        ?? toNumber(periodStats?.appliedAverage);
+        ?? null;
 
       const ownership = (player.ownership && typeof player.ownership === "object")
         ? (player.ownership as Record<string, unknown>)

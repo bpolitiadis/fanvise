@@ -13,7 +13,10 @@ export interface Player {
     firstName: string;
     lastName: string;
     fullName: string;
+    /** Pro team abbreviation (e.g. "LAL", "BOS") */
     proTeam: string;
+    /** ESPN numeric pro team ID for schedule lookups */
+    proTeamId?: number;
     position: string;
     injuryStatus: string;
     isInjured: boolean;
@@ -58,6 +61,10 @@ export interface Team {
     wins?: number;
     losses?: number;
     ties?: number;
+    /** Total fantasy points scored (season) */
+    pointsFor?: number;
+    /** Total fantasy points scored against (season) */
+    pointsAgainst?: number;
     /** Whether this is the user's own team (perspective) */
     isUserOwned?: boolean;
     /** Team logo URL */

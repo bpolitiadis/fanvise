@@ -8,6 +8,14 @@
 
 import { EspnLeagueResponse, EspnMember, EspnTeam } from "./types";
 
+/**
+ * Standard team name resolution from ESPN team object.
+ * ESPN's `name` field is a legacy field that may be empty;
+ * the canonical representation is `location + nickname`.
+ */
+export const resolveTeamName = (team: { location?: string; nickname?: string; name?: string; id?: number | string }): string =>
+    (team.location && team.nickname) ? `${team.location} ${team.nickname}` : (team.name || `Team ${team.id ?? '?'}`);
+
 export interface ParsedLeagueTeam {
     id: string;
     name: string;
@@ -83,7 +91,7 @@ export function mapEspnLeagueData(data: EspnLeagueResponse, swid?: string): Pars
 
         return {
             id: String(t.id),
-            name: (t.location && t.nickname) ? `${t.location} ${t.nickname}` : (t.name || `Team ${t.id}`),
+            name: resolveTeamName(t),
             abbrev: t.abbrev || '',
             logo: t.logo,
             wins: t.record?.overall?.wins || 0,

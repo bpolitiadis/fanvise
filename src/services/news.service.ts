@@ -218,7 +218,7 @@ const toIsoDaysAgo = (days: number) => new Date(Date.now() - (days * 24 * 60 * 6
 
 const sanitizeSearchTerm = (term: string) => term.replace(/[^a-zA-Z0-9\- ]/g, '').trim();
 
-const normalizeForMatch = (value: string) => value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const normalizeForMatch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
 interface SearchIntent {
     isInjuryQuery: boolean;
@@ -969,9 +969,18 @@ export interface FreshNewsResult {
 export async function searchNewsWithLiveFetch(
     playerName: string,
     limit: number = 8,
-    options: { feedTimeoutMs?: number } = {}
+    options: { feedTimeoutMs?: number; background?: boolean } = {}
 ): Promise<{ items: SearchNewsItem[]; newlyIngested: number }> {
     const query = `${playerName} injury status news update`;
+
+    if (options.background) {
+        // Fire and forget the live fetch
+        fetchPlayerSpecificNews(playerName, { feedTimeoutMs: options.feedTimeoutMs ?? 5_000 })
+            .catch(err => console.error(`[News Service] Background live fetch failed for ${playerName}`, err));
+
+        const dbItems = await searchNews(query, limit);
+        return { items: dbItems.slice(0, limit), newlyIngested: 0 };
+    }
 
     // Run DB lookup and live RSS ingest in parallel — don't wait for one before the other.
     const [dbResult, liveResult] = await Promise.allSettled([
@@ -1025,7 +1034,8 @@ export async function fetchPlayerSpecificNews(
     const feedTimeoutMs = options.feedTimeoutMs ?? 5_000;
 
     // Tokens used for quick title/content matching (e.g. "lebron james" → ["lebron", "james"])
-    const playerTokens = normalizeForMatch(playerName)
+    const normalizedName = normalizeForMatch(playerName);
+    const playerTokens = normalizedName
         .split(/\s+/)
         .filter(t => t.length >= 2);
 
@@ -1033,10 +1043,24 @@ export async function fetchPlayerSpecificNews(
         return { refreshed: 0, items: [] };
     }
 
+    const lastName = playerTokens[playerTokens.length - 1];
+
     const matchesPlayer = (text: string): boolean => {
         const norm = normalizeForMatch(text);
-        // Require ALL tokens to be present (avoids false positives on common words)
-        return playerTokens.every(token => norm.includes(token));
+
+        // 1. Exact full name match
+        if (norm.includes(normalizedName)) return true;
+
+        // 2. All tokens match
+        if (playerTokens.every(token => norm.includes(token))) return true;
+
+        // 3. Last name + injury context match (Rotowire often omits first name)
+        const hasLastName = norm.includes(lastName);
+        const hasInjuryContext = /\b(out|injury|injured|surgery|strain|sprain|questionable|doubtful|probable|gtd|illness|sick|evaluated|sore)\b/i.test(text); // use un-normalized text for regex or norm; let's use text
+
+        if (hasLastName && hasInjuryContext) return true;
+
+        return false;
     };
 
     // --- 1. Fetch all feeds in parallel with per-feed timeout ---

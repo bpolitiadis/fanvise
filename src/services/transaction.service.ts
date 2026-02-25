@@ -12,6 +12,7 @@
 
 import { createClient, createAdminClient } from '@/utils/supabase/server';
 import { EspnClient } from '@/lib/espn/client';
+import { resolveTeamName } from '@/lib/espn/mappers';
 
 export async function getLatestTransactions(leagueId: string, limit = 5) {
     const supabase = await createClient();
@@ -54,12 +55,8 @@ export async function fetchAndSyncTransactions(leagueId: string, year: string, s
 
         // 1a. From ESPN response
         if (data.teams && Array.isArray(data.teams)) {
-            data.teams.forEach((t: any) => {
-                const name = t.name ||
-                    (t.location && t.nickname ? `${t.location} ${t.nickname}` : undefined) ||
-                    t.abbrev ||
-                    `Team ${t.id}`;
-                teamMap.set(String(t.id), name);
+            data.teams.forEach((t: { id: number; location?: string; nickname?: string; name?: string; abbrev?: string }) => {
+                teamMap.set(String(t.id), resolveTeamName(t));
             });
         }
 
