@@ -84,7 +84,15 @@ By leveraging an **Environment-Adaptive RAG** architecture, FanVise merges **Pri
     3.  **Embed:** Generates vector embeddings for semantic search.
     4.  **Store:** Saves to Supabase for RAG retrieval.
 
-### **4.4. League Intelligence Map (Partial Implementation)**
+### **4.4. The Incremental Intelligence Flywheel**
+
+*   **Description:** An on-demand, adaptive intelligence loop that ensures player data is incrementally updated.
+*   **Process:**
+    1.  **Requirement:** Every player-specific query must evaluate cached DB news.
+    2.  **Live-Fetch:** If the cached news is stale, the system triggers a live-fetch to external sources (ESPN, Rotowire).
+    3.  **Parallel Search:** Cached results are returned immediately to the user, while the live search updates the Supabase vector store in the background for subsequent turns.
+
+### **4.5. League Intelligence Map (Partial Implementation)**
 
 *   **Description:** A single-pane-of-glass view of the league landscape.
 *   **Current Status:** Basic dashboard with "Recent Activity" and "Standings".
