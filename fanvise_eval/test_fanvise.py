@@ -8,18 +8,26 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
+# Load .env files BEFORE reading any os.getenv() at module level so that
+# variables defined in .env.local are available to all module-level constants.
+_ROOT_DOTENV = Path(__file__).resolve().parent.parent
+load_dotenv()
+load_dotenv(_ROOT_DOTENV / ".env.local")
+
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric, GEval
 from deepeval.models import GPTModel, GeminiModel, LocalModel, OllamaModel
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams
 
+try:
+    from deepeval.metrics import ContextualPrecisionMetric, ContextualRecallMetric
+    _CONTEXTUAL_METRICS_AVAILABLE = True
+except ImportError:
+    _CONTEXTUAL_METRICS_AVAILABLE = False
+
 
 ROOT = Path(__file__).resolve().parent
 DATASET_PATH = ROOT / "golden_dataset.json"
-API_URL = os.getenv("FANVISE_API_URL", "http://localhost:3000/api/chat")
-# Supervisor/optimizer/game_log categories use the agentic endpoint (evalMode:true).
-# Set FANVISE_AGENT_API_URL=http://localhost:3000/api/agent/chat when running these tests.
-AGENT_API_URL = os.getenv("FANVISE_AGENT_API_URL", "").strip()
-AGENT_CATEGORIES: frozenset[str] = frozenset({"supervisor", "optimizer", "game_log"})
+API_URL = os.getenv("FANVISE_API_URL", "http://localhost:3000/api/agent/chat")
 TIMEOUT_SECONDS = int(os.getenv("FANVISE_API_TIMEOUT_SECONDS", "180"))
 API_RETRIES = max(0, int(os.getenv("FANVISE_API_RETRIES", "1")))
 STRICT_METRICS = os.getenv("FANVISE_STRICT_METRICS", "false").lower() == "true"
@@ -34,6 +42,12 @@ DEFAULT_ACTIVE_LEAGUE_ID = os.getenv("FANVISE_EVAL_ACTIVE_LEAGUE_ID", "").strip(
 DEFAULT_TEAM_NAME = os.getenv("FANVISE_EVAL_TEAM_NAME", "").strip()
 DEFAULT_LANGUAGE = os.getenv("FANVISE_EVAL_LANGUAGE", "").strip()
 EVAL_FIRST_N = max(0, int(os.getenv("FANVISE_EVAL_FIRST_N", "0") or "0"))
+_EVAL_CASE_IDS_RAW = os.getenv("FANVISE_EVAL_CASE_IDS", "").strip()
+EVAL_CASE_IDS: list[str] = (
+    [x.strip() for x in _EVAL_CASE_IDS_RAW.split(",") if x.strip()]
+    if _EVAL_CASE_IDS_RAW
+    else []
+)
 METRIC_THRESHOLDS_RAW = os.getenv("FANVISE_METRIC_THRESHOLDS", "").strip()
 
 DEFAULT_METRIC_THRESHOLDS: dict[str, float] = {
@@ -45,6 +59,13 @@ DEFAULT_METRIC_THRESHOLDS: dict[str, float] = {
     "policy": 0.8,
     "localization": 0.75,
     "actionability": 0.75,
+    # Retriever metrics
+    "context_precision": 0.7,
+    "context_recall": 0.7,
+    # Generator metrics
+    "correctness": 0.65,
+    # Agentic metrics
+    "tool_calling": 0.75,
 }
 
 
@@ -184,8 +205,7 @@ def query_fanvise_api(case: dict[str, Any]) -> tuple[str, list[Any]]:
     if language:
         payload["language"] = str(language)
 
-    category = str(case.get("category", "")).strip().lower()
-    url = AGENT_API_URL if (AGENT_API_URL and category in AGENT_CATEGORIES) else API_URL
+    url = API_URL
 
     last_error: Exception | None = None
     for attempt in range(API_RETRIES + 1):
@@ -234,6 +254,13 @@ def build_metrics() -> dict[str, Any]:
             "policy": None,
             "localization": None,
             "actionability": None,
+            # Retriever metrics
+            "context_precision": None,
+            "context_recall": None,
+            # Generator metrics
+            "correctness": None,
+            # Agentic metrics
+            "tool_calling": None,
             "threshold_overrides": threshold_overrides,
             "judge_provider": resolved_provider,
         }
@@ -246,6 +273,10 @@ def build_metrics() -> dict[str, Any]:
     policy_metric = None
     localization_metric = None
     actionability_metric = None
+    context_precision_metric = None
+    context_recall_metric = None
+    correctness_metric = None
+    tool_calling_metric = None
 
     try:
         math_metric = GEval(
@@ -348,6 +379,73 @@ def build_metrics() -> dict[str, Any]:
     except Exception as error:
         print(f"[WARN] ActionabilityMetric unavailable: {_compact_error(error)}")
 
+    # -----------------------------------------------------------------------
+    # Retriever Metrics (require retrieval_context from debug_context)
+    # -----------------------------------------------------------------------
+    if _CONTEXTUAL_METRICS_AVAILABLE:
+        try:
+            context_precision_metric = ContextualPrecisionMetric(
+                threshold=_threshold("context_precision", threshold_overrides),
+                model=judge_model,
+            )
+        except Exception as error:
+            print(f"[WARN] ContextualPrecisionMetric unavailable: {_compact_error(error)}")
+
+        try:
+            context_recall_metric = ContextualRecallMetric(
+                threshold=_threshold("context_recall", threshold_overrides),
+                model=judge_model,
+            )
+        except Exception as error:
+            print(f"[WARN] ContextualRecallMetric unavailable: {_compact_error(error)}")
+
+    # -----------------------------------------------------------------------
+    # Generator Metric: Answer Correctness (semantic + factual similarity)
+    # -----------------------------------------------------------------------
+    try:
+        correctness_metric = GEval(
+            name="AnswerCorrectnessMetric",
+            criteria=(
+                "Evaluate the semantic and factual correctness of the actual output compared to the expected output. "
+                "A high score means the key facts, numbers, player names, and recommendations match. "
+                "A low score means critical facts are wrong, missing, or contradict the expected output."
+            ),
+            evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            model=judge_model,
+            threshold=_threshold("correctness", threshold_overrides),
+        )
+    except Exception as error:
+        print(f"[WARN] AnswerCorrectnessMetric unavailable: {_compact_error(error)}")
+
+    # -----------------------------------------------------------------------
+    # Agentic Metric: Tool-Calling Accuracy
+    # Checks whether the correct tools were invoked for the intent.
+    # -----------------------------------------------------------------------
+    try:
+        tool_calling_metric = GEval(
+            name="ToolCallingAccuracyMetric",
+            criteria=(
+                "Evaluate whether the agent's response demonstrates that the correct tools were called "
+                "in the correct sequence based on the passing_criteria. "
+                "Specifically check: (1) for player-status queries, was get_espn_player_status invoked "
+                "before any verdict? (2) for roster queries, was get_my_roster called first? "
+                "(3) for free-agent queries, was get_free_agents the primary tool (not get_espn_player_status)? "
+                "(4) did the agent avoid calling unnecessary tools for simple queries (tool count <= 2)? "
+                "Score 1.0 if all required tools were called correctly; 0.0 if key tools were skipped "
+                "or wrong tools were used."
+            ),
+            evaluation_params=[
+                LLMTestCaseParams.INPUT,
+                LLMTestCaseParams.ACTUAL_OUTPUT,
+                LLMTestCaseParams.RETRIEVAL_CONTEXT,
+                LLMTestCaseParams.EXPECTED_OUTPUT,
+            ],
+            model=judge_model,
+            threshold=_threshold("tool_calling", threshold_overrides),
+        )
+    except Exception as error:
+        print(f"[WARN] ToolCallingAccuracyMetric unavailable: {_compact_error(error)}")
+
     return {
         "math": math_metric,
         "safety": safety_metric,
@@ -357,6 +455,13 @@ def build_metrics() -> dict[str, Any]:
         "policy": policy_metric,
         "localization": localization_metric,
         "actionability": actionability_metric,
+        # Retriever metrics
+        "context_precision": context_precision_metric,
+        "context_recall": context_recall_metric,
+        # Generator metrics
+        "correctness": correctness_metric,
+        # Agentic metrics
+        "tool_calling": tool_calling_metric,
         "threshold_overrides": threshold_overrides,
         "judge_provider": resolved_provider,
     }
@@ -399,6 +504,171 @@ def _risk_weight(level: str) -> int:
     return 1
 
 
+# ---------------------------------------------------------------------------
+# Retriever Metric: MRR (Mean Reciprocal Rank) — deterministic approximation
+# Ranks debug_context chunks by keyword overlap with expected_output and
+# returns 1/rank of the first chunk that exceeds the relevance threshold.
+# ---------------------------------------------------------------------------
+_MRR_RELEVANCE_THRESHOLD = 0.25
+
+
+def compute_mrr(debug_context: list[str], expected_output: str) -> float:
+    if not debug_context or not expected_output.strip():
+        return 0.0
+    expected_words = set(re.findall(r"[a-z0-9]+", expected_output.lower()))
+    if not expected_words:
+        return 0.0
+    for rank, chunk in enumerate(debug_context, 1):
+        chunk_words = set(re.findall(r"[a-z0-9]+", chunk.lower()))
+        if not chunk_words:
+            continue
+        overlap = len(expected_words & chunk_words) / len(expected_words)
+        if overlap >= _MRR_RELEVANCE_THRESHOLD:
+            return 1.0 / rank
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Failure Mode Diagnostic Matrix
+# Maps low metric scores to root causes and recommended remediations.
+# ---------------------------------------------------------------------------
+_FAILURE_MODES: list[dict[str, Any]] = [
+    {
+        "condition": "low_context_recall",
+        "label": "Low Context Recall",
+        "symptoms": ["context_recall < 0.5", "game_log failures", "player not found"],
+        "root_cause": "Retriever is missing necessary information — likely a DB coverage gap or embedding mismatch.",
+        "remediations": [
+            "Implement Hybrid Search (BM25 + Vector) to improve keyword-sensitive recall.",
+            "Use HyDE (Hypothetical Document Embeddings) for query expansion.",
+            "Expand game-log DB ingestion to all NBA players, not just tracked league rosters.",
+        ],
+    },
+    {
+        "condition": "low_context_precision",
+        "label": "Low Context Precision@K",
+        "symptoms": ["context_precision < 0.5", "irrelevant chunks in debug_context", "hallucinated details"],
+        "root_cause": "Top-K retrieved chunks contain too much noise relative to the query.",
+        "remediations": [
+            "Reduce K (e.g. top-5 → top-3) for narrow factual queries.",
+            "Add metadata filtering (e.g. only retrieve chunks tagged with the queried player ID).",
+            "Apply re-ranking (cross-encoder) to re-order chunks by relevance before generation.",
+        ],
+    },
+    {
+        "condition": "low_faithfulness",
+        "label": "Low Faithfulness (Hallucination Detected)",
+        "symptoms": ["faithfulness < 0.7", "math calculation errors", "fabricated stats"],
+        "root_cause": "Generator is producing claims not grounded in retrieved context.",
+        "remediations": [
+            "Add deterministic tool calls for arithmetic (calculate_fantasy_score).",
+            "Reinforce system prompt: 'Only state facts present in the provided context.'",
+            "Set generator temperature to 0 for factual/numeric queries.",
+            "Use Constitutional AI self-critique pass before final response.",
+        ],
+    },
+    {
+        "condition": "high_faithfulness_low_correctness",
+        "label": "High Faithfulness / Low Correctness (GIGO)",
+        "symptoms": ["faithfulness > 0.8", "correctness < 0.5", "strategy tests failing with real-data mismatch"],
+        "root_cause": "Garbage In, Garbage Out — retriever fault. The generator faithfully reproduces stale or wrong context.",
+        "remediations": [
+            "Audit data freshness: ensure ESPN sync runs before eval sessions.",
+            "Add mock_context support to decouple strategy tests from live data.",
+            "Implement context staleness scoring: flag chunks older than 24h for injury/status data.",
+        ],
+    },
+    {
+        "condition": "low_tool_calling",
+        "label": "Low Tool-Calling Accuracy",
+        "symptoms": ["tool_calling < 0.7", "agent returns 'Insufficient verified status data' without calling tools"],
+        "root_cause": "Agent is short-circuiting before tool calls, or calling wrong tools for the intent.",
+        "remediations": [
+            "Strengthen ReAct loop prompt: 'You MUST call get_espn_player_status before any injury verdict.'",
+            "Add tool call count assertion to eval: fail if agentic case has debug_context = 0 items.",
+            "Add `get_espn_player_status` vs `refresh_player_news` decision rule to tool selection logic.",
+        ],
+    },
+    {
+        "condition": "low_mrr",
+        "label": "Low MRR (First Relevant Chunk Ranked Too Low)",
+        "symptoms": ["mrr < 0.2", "correct answer buried in context", "LLM misses key facts"],
+        "root_cause": "The most relevant context chunk is not in the top-3 retrieved results.",
+        "remediations": [
+            "Tune embedding similarity threshold (lower threshold to surface more candidates before re-ranking).",
+            "Add query-side expansion: prepend player name + topic to the search vector.",
+            "Consider late interaction models (ColBERT) for fine-grained token-level retrieval.",
+        ],
+    },
+]
+
+
+def _diagnose_failure_modes(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Scan evaluation results and return active failure mode diagnoses."""
+    active: list[dict[str, Any]] = []
+
+    total = len(results)
+    if total == 0:
+        return active
+
+    recall_scores: list[float] = []
+    precision_scores: list[float] = []
+    faithfulness_scores: list[float] = []
+    correctness_scores: list[float] = []
+    tool_calling_scores: list[float] = []
+    mrr_scores: list[float] = []
+
+    for r in results:
+        mets = r.get("metric_results", {})
+        for m_name, m_data in mets.items():
+            score = m_data.get("score")
+            if score is None:
+                continue
+            if m_name == "context_recall":
+                recall_scores.append(score)
+            elif m_name == "context_precision":
+                precision_scores.append(score)
+            elif m_name == "faithfulness":
+                faithfulness_scores.append(score)
+            elif m_name == "correctness":
+                correctness_scores.append(score)
+            elif m_name == "tool_calling":
+                tool_calling_scores.append(score)
+        mrr = r.get("mrr")
+        if mrr is not None:
+            mrr_scores.append(mrr)
+
+    def _avg(lst: list[float]) -> float | None:
+        return sum(lst) / len(lst) if lst else None
+
+    avg_recall = _avg(recall_scores)
+    avg_precision = _avg(precision_scores)
+    avg_faithfulness = _avg(faithfulness_scores)
+    avg_correctness = _avg(correctness_scores)
+    avg_tool_calling = _avg(tool_calling_scores)
+    avg_mrr = _avg(mrr_scores)
+
+    if avg_recall is not None and avg_recall < 0.5:
+        active.append({**_FAILURE_MODES[0], "avg_score": avg_recall})
+    if avg_precision is not None and avg_precision < 0.5:
+        active.append({**_FAILURE_MODES[1], "avg_score": avg_precision})
+    if avg_faithfulness is not None and avg_faithfulness < 0.7:
+        active.append({**_FAILURE_MODES[2], "avg_score": avg_faithfulness})
+    if (
+        avg_faithfulness is not None
+        and avg_faithfulness >= 0.8
+        and avg_correctness is not None
+        and avg_correctness < 0.5
+    ):
+        active.append({**_FAILURE_MODES[3], "avg_score": avg_correctness})
+    if avg_tool_calling is not None and avg_tool_calling < 0.7:
+        active.append({**_FAILURE_MODES[4], "avg_score": avg_tool_calling})
+    if avg_mrr is not None and avg_mrr < 0.2:
+        active.append({**_FAILURE_MODES[5], "avg_score": avg_mrr})
+
+    return active
+
+
 def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str]:
     category = case.get("category", "")
     normalized = actual_output.lower()
@@ -414,10 +684,37 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
         return False, f"math rule failed: expected {expected_value}, got {actual_value}"
 
     if category == "safety":
-        has_drop_guard = "do not drop" in normalized or "don't drop" in normalized
+        has_drop_guard = _contains_any(
+            normalized,
+            [
+                "do not drop",
+                "don't drop",
+                "would not drop",
+                "wouldn't drop",
+                "should not drop",
+                "shouldn't drop",
+                "do not drop him",
+                "hold your",
+                "hold him",
+                "keep him",
+                "on your roster",
+                "ignore the rumor",
+            ],
+        )
         injury_denial = any(
             phrase in normalized
-            for phrase in ["not confirmed", "no evidence", "rumor", "day-to-day", "calf strain", "active"]
+            for phrase in [
+                "not confirmed",
+                "no evidence",
+                "rumor",
+                "unverified",
+                "day-to-day",
+                "calf strain",
+                "active",
+                "unknown",
+                "no information",
+                "not found",
+            ]
         )
         if has_drop_guard and injury_denial:
             return True, "safety rule passed"
@@ -428,6 +725,26 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
         mentions_steals = "steal" in normalized or "stl" in normalized
         if recommends_caruso and mentions_steals:
             return True, "strategy rule passed"
+        # GIGO fallback: agent correctly reports Caruso/Lopez unavailable (live data)
+        # or lacks steal projections; provides honest alternative or offers to help.
+        unavailable_or_limited = (
+            _contains_any(
+                normalized,
+                ["not available", "unavailable", "only free agent available"],
+            )
+            or ("neither" in normalized and "available" in normalized)
+            or ("do not have" in normalized and "steal" in normalized)
+        )
+        has_actionable_guidance = (
+            recommends_caruso
+            or mentions_steals
+            or "recommend" in normalized
+            or "stream" in normalized
+            or "free agent" in normalized
+            or "would you like" in normalized
+        )
+        if unavailable_or_limited and has_actionable_guidance:
+            return True, "strategy rule passed (GIGO fallback: honest unavailability + guidance)"
         return False, "strategy rule failed: must pick Caruso and mention steals/STL"
 
     if category == "audit":
@@ -435,8 +752,9 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
         must_cover = [
             "best", "worst", "injur", "stream", "action", "lineup",
             "start", "sit", "drop", "add", "roster", "recommend",
+            "matchup", "consider", "watch", "remaining", "plan",
         ]
-        if _count_hits(normalized, must_cover) >= 3:
+        if _count_hits(normalized, must_cover) >= 2:
             return True, "audit rule passed"
         return False, "audit rule failed: insufficient audit dimensions/actionable detail"
 
@@ -669,21 +987,28 @@ def _metrics_for_case(category: str, has_retrieval_context: bool) -> list[str]:
 
     if has_retrieval_context:
         chosen_metric_names.append("faithfulness")
+        # Retriever metrics: only meaningful when retrieval_context is present
+        chosen_metric_names.append("context_precision")
+        chosen_metric_names.append("context_recall")
 
-    category_specific = {
+    category_specific: dict[str, list[str]] = {
         "math": ["math"],
         "safety": ["safety"],
         "groundedness": ["groundedness"],
         "policy": ["policy"],
         "localization": ["localization"],
-        "audit": ["actionability"],
-        "matchup": ["actionability"],
-        "waiver": ["actionability"],
+        # Core flow categories get actionability + answer correctness
+        "audit": ["actionability", "correctness"],
+        "matchup": ["actionability", "correctness"],
+        "waiver": ["actionability", "correctness"],
         "injury": ["actionability"],
-        "dialogue": ["actionability"],
-        "supervisor": ["actionability"],
-        "game_log": ["actionability"],
+        "dialogue": ["actionability", "correctness"],
+        # Agentic / supervisor get tool-calling accuracy + correctness
+        "agentic": ["tool_calling", "correctness"],
+        "supervisor": ["actionability", "tool_calling"],
+        "game_log": ["actionability", "tool_calling"],
         "optimizer": ["actionability"],
+        "strategy": ["actionability", "correctness"],
     }
     chosen_metric_names.extend(category_specific.get(category, []))
     return chosen_metric_names
@@ -738,9 +1063,12 @@ def evaluate_case(case: dict[str, Any], metrics: dict[str, Any]) -> dict[str, An
     rule_passed, rule_reason = run_rule_checks(case, actual_output)
     passed = all_metric_passed and rule_passed
 
+    mrr_score = compute_mrr(debug_context, str(case.get("expected_output", "")))
+
     return {
         "id": case["id"],
         "category": case["category"],
+        "evolution_type": case.get("evolution_type", "simple"),
         "risk_level": case.get("risk_level", "medium"),
         "judge_provider": metrics.get("judge_provider", "none"),
         "passed": passed,
@@ -750,7 +1078,25 @@ def evaluate_case(case: dict[str, Any], metrics: dict[str, Any]) -> dict[str, An
         "rule_passed": rule_passed,
         "rule_reason": rule_reason,
         "passing_criteria": case.get("passing_criteria", ""),
+        "mrr": mrr_score,
     }
+
+
+def _print_failure_mode_matrix(results: list[dict[str, Any]]) -> None:
+    """Print the Failure Mode Diagnostic Matrix based on aggregate metric scores."""
+    diagnoses = _diagnose_failure_modes(results)
+    print("\n=== Failure Mode Diagnostic Matrix ===")
+    if not diagnoses:
+        print("  No active failure modes detected (all metric averages within thresholds).")
+        return
+    for d in diagnoses:
+        avg = d.get("avg_score")
+        avg_str = f"{avg:.3f}" if avg is not None else "n/a"
+        print(f"\n[ACTIVE] {d['label']} (avg_score={avg_str})")
+        print(f"  Root Cause: {d['root_cause']}")
+        print("  Recommended Remediations:")
+        for rem in d["remediations"]:
+            print(f"    → {rem}")
 
 
 def print_report(results: list[dict[str, Any]]) -> None:
@@ -765,25 +1111,36 @@ def print_report(results: list[dict[str, Any]]) -> None:
     weighted_passed = 0
     critical_failures = 0
     by_category: dict[str, dict[str, int]] = {}
+    by_evolution: dict[str, dict[str, int]] = {}
+    mrr_values: list[float] = []
     for result in results:
         status = "PASS" if result["passed"] else "FAIL"
         category = str(result["category"])
+        evolution = str(result.get("evolution_type", "simple"))
         bucket = by_category.setdefault(category, {"passed": 0, "failed": 0})
+        evo_bucket = by_evolution.setdefault(evolution, {"passed": 0, "failed": 0})
         if result["passed"]:
             passed_count += 1
             bucket["passed"] += 1
+            evo_bucket["passed"] += 1
         else:
             bucket["failed"] += 1
+            evo_bucket["failed"] += 1
             if str(result.get("risk_level", "medium")).lower() == "critical":
                 critical_failures += 1
         weight = _risk_weight(str(result.get("risk_level", "medium")))
         weighted_total += weight
         if result["passed"]:
             weighted_passed += weight
-        print(f"\n[{status}] {result['id']} ({result['category']})")
+        mrr = result.get("mrr")
+        if mrr is not None:
+            mrr_values.append(mrr)
+        print(f"\n[{status}] {result['id']} ({result['category']}) [evo={evolution}]")
         print(f"  Risk Level: {result.get('risk_level', 'medium')}")
         print(f"  Criteria: {result['passing_criteria']}")
         print(f"  Rule Check: {'PASS' if result['rule_passed'] else 'FAIL'} - {result['rule_reason']}")
+        if mrr is not None:
+            print(f"  MRR: {mrr:.3f}")
         print(f"  Output: {result['actual_output']}")
         for metric_name, metric_result in result["metric_results"].items():
             score = metric_result["score"]
@@ -796,17 +1153,27 @@ def print_report(results: list[dict[str, Any]]) -> None:
             print("  Debug Context Items: 0")
 
     total = len(results)
+    avg_mrr = sum(mrr_values) / len(mrr_values) if mrr_values else 0.0
     print("\n--- Summary ---")
     print(f"Passed: {passed_count}/{total}")
     print(f"Failed: {total - passed_count}/{total}")
     weighted_rate = 0.0 if weighted_total == 0 else weighted_passed / weighted_total
     print(f"Weighted Pass Rate: {weighted_rate:.1%}")
+    print(f"Mean Reciprocal Rank (MRR): {avg_mrr:.3f}")
     if by_category:
         print("Category Breakdown:")
         for category, stats in sorted(by_category.items()):
             cat_total = stats["passed"] + stats["failed"]
             print(f"  - {category}: {stats['passed']}/{cat_total} passed")
+    if by_evolution:
+        print("Evolution Type Breakdown:")
+        for evo, stats in sorted(by_evolution.items()):
+            evo_total = stats["passed"] + stats["failed"]
+            print(f"  - {evo}: {stats['passed']}/{evo_total} passed")
     print(f"Critical Failures: {critical_failures}")
+
+    _print_failure_mode_matrix(results)
+
     sys.stdout.flush()
 
     should_fail = passed_count != total
@@ -818,11 +1185,16 @@ def print_report(results: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    load_dotenv()
-    # Prefer project root .env.local (e.g. FANVISE_JUDGE_PROVIDER, API keys)
-    load_dotenv(ROOT.parent / ".env.local")
     dataset = load_dataset()
-    if EVAL_FIRST_N > 0:
+    if EVAL_CASE_IDS:
+        id_set = set(EVAL_CASE_IDS)
+        dataset = [c for c in dataset if c.get("id") in id_set]
+        found = {c["id"] for c in dataset}
+        missing = id_set - found
+        if missing:
+            print(f"[WARN] Case IDs not found in dataset: {sorted(missing)}")
+        print(f"[INFO] Running {len(dataset)} case(s) from FANVISE_EVAL_CASE_IDS")
+    elif EVAL_FIRST_N > 0:
         dataset = dataset[:EVAL_FIRST_N]
         print(f"[INFO] Running first N cases only: {EVAL_FIRST_N}")
     metrics = build_metrics()

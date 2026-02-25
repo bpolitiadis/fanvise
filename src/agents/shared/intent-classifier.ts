@@ -31,6 +31,13 @@
 
 import type { QueryIntent } from "./types";
 
+// ─── Safety exclusion (FM-1 fix) ──────────────────────────────────────────────
+// Queries about unverified rumors, catastrophic injuries, or social/chat claims
+// combined with "drop" must NOT route to lineup_optimization — they need the
+// ReAct agent to fetch ESPN status and apply safety policy before any verdict.
+const SAFETY_EXCLUSION_PATTERN =
+  /\b(rumor|broke|tore|torn|career.?ending|season.?ending|group chat says|someone says|league chat says|unverified|social media|posted that|account posted|breaking rumor)\b/i;
+
 // ─── Pattern map ──────────────────────────────────────────────────────────────
 
 const INTENT_PATTERNS: Array<{ intent: Exclude<QueryIntent, "general_advice">; pattern: RegExp }> = [
@@ -43,7 +50,7 @@ const INTENT_PATTERNS: Array<{ intent: Exclude<QueryIntent, "general_advice">; p
   {
     intent: "team_audit",
     pattern:
-      /\b(comprehensive|full overview|complete overview|team overview|roster overview|team audit|roster audit|audit.*team|audit.*roster|best.*performer|worst.*performer|injury.*report|full.*report|overview.*team|deep.?dive.*team|deep.?dive.*roster|tell me.*team|tell me.*roster|IR slot|check.*team.*injur|injur.*team|injured.*player|day.to.day.*player|DTD.*player|return.*timeline|IR.*optim|optim.*IR)\b/i,
+      /\b(comprehensive|full overview|complete overview|team overview|roster overview|team audit|roster audit|audit.*team|audit.*roster|best.*performer|worst.*performer|injury.*report|full.*report|overview.*team|deep.?dive.*team|deep.?dive.*roster|tell me.*team|tell me.*roster|IR slot|check.*team.*injur|injur.*team|injured.*player|day.to.day.*player|DTD.*player|return.*timeline|IR.*optim|optim.*IR|game plan|injury watch|monday plan|quick.*plan)\b/i,
   },
 
   // ── matchup_analysis (SECOND — "matchup" is a strong, unambiguous signal) ──
@@ -116,6 +123,13 @@ const INTENT_PATTERNS: Array<{ intent: Exclude<QueryIntent, "general_advice">; p
  */
 export function classifyIntent(query: string): QueryIntent {
   const normalized = query.trim().toLowerCase();
+
+  // Safety exclusion: queries about rumors/catastrophic injuries + "drop" must
+  // route to player_research (ReAct agent) so ESPN status is fetched and safety
+  // policy applied — NOT the optimizer which only runs waiver math.
+  if (/\bdrop\b/i.test(query) && SAFETY_EXCLUSION_PATTERN.test(query)) {
+    return "player_research";
+  }
 
   for (const { intent, pattern } of INTENT_PATTERNS) {
     if (pattern.test(normalized)) {

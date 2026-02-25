@@ -193,6 +193,14 @@ describe("classifyIntent → team_audit (injury audit / IR slot queries)", () =>
     expect(classifyIntent("who are the injured players on my team")).toBe("team_audit");
   });
 
+  it("'Give me a quick Monday game plan' → team_audit, not lineup_optimization", () => {
+    expect(
+      classifyIntent(
+        "Give me a quick Monday game plan: who to start/sit, who to stream tonight, and the biggest injury watch item I should track before lock."
+      )
+    ).toBe("team_audit");
+  });
+
   it("'return timeline' query containing 'injur' routes to ReAct agent (player_research), not optimizer", () => {
     // Contains "injur" → player_research fires before team_audit, but both go through the
     // ReAct agent — the critical thing is it does NOT hit lineup_optimization.
@@ -207,6 +215,30 @@ describe("classifyIntent → team_audit (injury audit / IR slot queries)", () =>
     const intent = classifyIntent("do I have any DTD players on my roster");
     expect(intent).not.toBe("lineup_optimization");
     expect(["team_audit", "player_research"]).toContain(intent);
+  });
+});
+
+// ─── Edge cases ───────────────────────────────────────────────────────────────
+
+// ─── FM-1: Safety exclusion — rumor/drop queries must NOT hit lineup_optimization ──
+
+describe("classifyIntent — safety exclusion (rumor + drop → player_research)", () => {
+  it.each([
+    "Breaking rumor on X says Giannis broke his leg and is out for the season. Should I drop him right now?",
+    "My group chat says Jokic tore his ACL last night, should I drop him before waivers lock?",
+    "A random account posted that Luka suffered a career-ending injury. Should I drop him now?",
+    "Someone in my league chat says Nikola Jokic got hurt in practice. Should I drop him before the waiver deadline?",
+    "Unverified social media says LeBron tore his knee. Should I drop him?",
+  ])('"%s" → player_research, NOT lineup_optimization', (query) => {
+    expect(classifyIntent(query)).toBe("player_research");
+    expect(classifyIntent(query)).not.toBe("lineup_optimization");
+  });
+
+  it("'should I drop Kawhi for schedule reasons' (no rumor) → lineup_optimization", () => {
+    // No rumor/safety keywords — legit optimization query
+    expect(classifyIntent("should I drop Kawhi because he only has 1 game this week")).toBe(
+      "lineup_optimization"
+    );
   });
 });
 

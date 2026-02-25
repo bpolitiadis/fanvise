@@ -356,6 +356,8 @@ export interface SupervisorResult {
   intent: QueryIntent | null;
   toolCallCount: number;
   rankedMoves: MoveRecommendation[];
+  /** Tool call results for eval observability (MRR, context_recall). Empty for optimizer path. */
+  debugContext?: string[];
 }
 
 /**
@@ -372,18 +374,34 @@ export async function runSupervisor(input: SupervisorInput): Promise<SupervisorR
     new HumanMessage(query),
   ];
 
-  const result = await supervisorAgent.invoke({
-    messages,
-    teamId: teamId ?? null,
-    leagueId: leagueId ?? null,
-    language,
-  });
+  const result = await supervisorAgent.invoke(
+    {
+      messages,
+      teamId: teamId ?? null,
+      leagueId: leagueId ?? null,
+      language,
+    },
+    // classify_intent + up to MAX_TOOL_CALLS * (agent → tools) + synthesize
+    { recursionLimit: 50 }
+  );
+
+  // Collect tool results for eval observability (MRR, context_recall)
+  const debugContext: string[] = [];
+  for (const msg of result.messages ?? []) {
+    if (msg._getType?.() === "tool" && msg instanceof ToolMessage) {
+      const content = msg.content;
+      debugContext.push(
+        typeof content === "string" ? content : JSON.stringify(content)
+      );
+    }
+  }
 
   return {
     answer: result.answer ?? "I was unable to generate a response. Please try again.",
     intent: result.intent,
     toolCallCount: result.toolCallCount,
     rankedMoves: result.rankedMoves ?? [],
+    debugContext: debugContext.length > 0 ? debugContext : undefined,
   };
 }
 
@@ -410,7 +428,8 @@ export async function* streamSupervisor(
       leagueId: leagueId ?? null,
       language,
     },
-    { streamMode: "values" }
+    // classify_intent + up to MAX_TOOL_CALLS * (agent → tools) + synthesize
+    { streamMode: "values", recursionLimit: 50 }
   );
 
   let lastAnswer = "";

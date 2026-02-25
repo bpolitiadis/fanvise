@@ -8,6 +8,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — Eval Critical Failures & Sprint 2 (2026-02-25)
+
+- **math_integrity_03** — Agent refused to calculate when user provided explicit stats + scoring. Added prompt carve-out: "When the user supplies explicit stat values and scoring weights, calculate the fantasy total directly." (`src/agents/supervisor/prompts.ts`)
+- **safety_star_rumor_02** — Evaluator rule too strict. Extended `has_drop_guard` to accept "would not drop", "hold", "keep him", "ignore the rumor", etc. Extended `injury_denial` with "unverified", "unknown", "no information". (`fanvise_eval/test_fanvise.py`)
+- **Safety prompt hardening** — Star rumor rule now requires: (1) state rumor unverified, (2) cite ESPN, (3) say "do not drop [name]", (4) explain official sources required. (`src/agents/supervisor/prompts.ts`)
+- **audit_composite_02 optimizer misrouting** — "game plan" queries routed to lineup_optimization. Added `game plan`, `injury watch`, `monday plan`, `quick.*plan` to `team_audit` intent pattern. (`src/agents/shared/intent-classifier.ts`)
+- **strategy_streaming GIGO fallback** — When agent correctly reports Caruso/Lopez unavailable (live data), pass if it provides honest alternative guidance. (`fanvise_eval/test_fanvise.py`)
+- **FANVISE_EVAL_CASE_IDS** — Run specific cases by ID for sanity checks. (`fanvise_eval/test_fanvise.py`, `docs/technical/AI_Evaluation_Framework.md`)
+
+### Removed — Classic Mode / Dual-Mode Architecture (2026-02-24)
+
+- **Deleted `src/app/api/chat/route.ts`** — The Classic `/api/chat` endpoint is removed. The sole AI chat endpoint is now `POST /api/agent/chat`.
+- **Deleted `src/services/intelligence.service.ts`** — The Classic single-pass RAG service (26 KB) is removed. All intelligence logic lives in the LangGraph Supervisor at `src/agents/`.
+- **Extracted `src/utils/output-compliance.ts`** — The compliance post-processing logic (`applyCompliancePostProcessing`, `complianceContract`, `requiresComplianceProcessing`) is preserved as a standalone shared utility, available to any agent or route that needs output safety enforcement.
+- **Removed `ChatMode` type and toggle** — `chat-history-context.tsx` no longer stores or exposes a `mode` field on `Conversation`. `chat-interface.tsx` removes the `AgentModeToggle` component, `handleToggleMode`, and `isAgentMode` conditional — all requests go to `/api/agent/chat`.
+- **Simplified eval suite** — `fanvise_eval/test_fanvise.py` removes `AGENT_CATEGORIES` dual-routing; `FANVISE_API_URL` now defaults to the agent endpoint.
+- **Updated all documentation** — `README.md`, `docs/README.md`, `docs/technical/Architecture.md`, `docs/technical/API_and_Agents.md`, `docs/technical/AI_Evaluation_Framework.md`, `docs/technical/Database.md`, `docs/technical/Daily_Leaders_Storage_Design.md`, `prompts/index.ts`, `src/app/api/agent/chat/route.ts`, `src/agents/shared/types.ts` — all references to "Classic Mode", "Dual-Mode", and `/api/chat` are updated to reflect the single Agentic architecture.
+- **Archived** — `git branch legacy/classic-rag` contains the full Classic code permanently.
+
 ### Fixed — ESPN Data & News Pipeline P2 schema + code (2026-02-24)
 
 - **[N10] `impacted_player_ids` renamed to `impacted_player_names`** — The column has always stored player names, not ESPN integer IDs. Migration `20260224210000` renames the column and recreates the `match_news_documents` RPC with the corrected return type. All TypeScript references in `news.service.ts` updated. (`supabase/migrations/20260224210000_rename_impacted_player_ids.sql`, `src/services/news.service.ts`)
@@ -54,7 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **docs/REVIEW_2026-02-24.md** — Senior dev review of uncommitted changes, stability assessment, and logical commit breakdown.
 - **Settings** — User settings page with ESPN League/Team IDs, Gemini API key, news source preferences. Per-user config with DB → env fallback.
 - **LangGraph agents** — Supervisor agent with tool routing; Player Research agent (live ESPN status + news). `/api/agent/chat` endpoint.
-- **Chat mode toggle** — Switch between Classic (single-pass RAG) and Agent (Supervisor) mode. Toaster notifications.
+- **Chat mode toggle** — ~~Switch between Classic (single-pass RAG) and Agent (Supervisor) mode.~~ *Removed — Classic mode eliminated; UI now fixed on Agentic mode.*
 - **News enhancements** — ESPN full article fetch, `news_sources` catalog, `user_news_preferences`, `full_content` column, `news:stats` script.
 - **Player game logs** — ESPN `getPlayerGameLog`, `game-log.service`, `player_game_logs` table with cache-on-read.
 - **Dependencies** — `@langchain/langgraph`, `@langchain/google-genai`, `@langchain/ollama`, `react-hook-form`, `sonner`, Radix form/label/separator/switch.

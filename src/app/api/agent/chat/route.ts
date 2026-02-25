@@ -1,14 +1,12 @@
 /**
  * Supervisor Agent Chat Route
  *
- * Replaces the single-pass intelligence service for complex queries.
- * The LLM decides which tools to call based on the user's question —
- * no hardcoded data fetching order.
+ * The sole AI chat endpoint. The LLM decides which tools to call based on
+ * the user's question — no hardcoded data fetching order.
  *
  * POST /api/agent/chat
  *
- * Request body mirrors /api/chat so the frontend can swap endpoints transparently.
- * Response: text/plain streaming (same format as /api/chat) OR JSON in evalMode.
+ * Response: text/plain streaming OR JSON in evalMode.
  *
  * Routing strategy:
  * - Simple greetings / out-of-scope → fast path (no agent, direct LLM)
@@ -95,6 +93,7 @@ export async function POST(req: NextRequest) {
         intent: result.intent,
         toolCallCount: result.toolCallCount,
         rankedMoves: result.rankedMoves,
+        debug_context: result.debugContext ?? [],
         provider: ACTIVE_PROVIDER,
         model: ACTIVE_MODEL,
       });
@@ -154,6 +153,6 @@ export async function GET() {
     endpoint: "POST /api/agent/chat",
     description: "Supervisor agent — dynamically selects tools based on the user question",
     agents: ["player_research", "free_agent_scan", "matchup_analysis", "lineup_optimization", "general_advice"],
-    note: "Drop-in replacement for /api/chat with agentic tool-calling",
+    note: "Sole AI chat endpoint — Supervisor agent with dynamic tool-calling",
   });
 }
