@@ -50,7 +50,16 @@ Read the **[Authentication System Docs](./docs/Authentication.md)** for further 
 To ensure the AI Agent remains strictly factual and hallucination-free regarding roster data and injury news, FanVise includes an automated, standalone black-box evaluator.
 
 *   Run evaluations: `pnpm test:ai`
+*   Fast smoke eval (first 8 cases): `FANVISE_JUDGE_PROVIDER=none FANVISE_EVAL_FIRST_N=8 pnpm test:ai`
 *   Located in `fanvise_eval/`, this runs tests directly against the local `POST /api/agent/chat` endpoint using a golden dataset.
+
+## 📦 Game Log Backfill
+
+To improve `game_log` tool reliability across the NBA pool, run:
+
+*   `pnpm game-logs:backfill`
+
+The backfill script discovers NBA players from ESPN `kona_player_info`, seeds `player_status_snapshots`, and upserts recent per-period stats into `player_game_logs`.
 
 ## ⏭️ Next Steps & Roadmap
 

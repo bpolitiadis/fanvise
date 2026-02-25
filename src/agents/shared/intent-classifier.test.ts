@@ -263,3 +263,39 @@ describe("classifyIntent edge cases", () => {
     expect(classifyIntent("βοήθα με να κάνω stream αυτή την εβδομάδα")).toBe("free_agent_scan");
   });
 });
+
+describe("classifyIntent sport-scope exclusion", () => {
+  it.each([
+    "Who should I start in my NFL lineup this week?",
+    "Give me my MLB waiver wire pickups",
+    "Best soccer streamers this week",
+  ])('"%s" → general_advice (out-of-scope sport)', (query) => {
+    expect(classifyIntent(query)).toBe("general_advice");
+  });
+
+  it("NBA query should still route normally", () => {
+    expect(classifyIntent("Who should I start in my NBA lineup this week?")).toBe(
+      "lineup_optimization"
+    );
+  });
+});
+
+describe("classifyIntent hypothetical routing", () => {
+  it("assumption-based lineup query routes to team_audit, not optimizer", () => {
+    const intent = classifyIntent(
+      "Assume all three of my DTD players are ruled out tonight. What is my best starting lineup?"
+    );
+    expect(intent).toBe("team_audit");
+    expect(intent).not.toBe("lineup_optimization");
+  });
+});
+
+describe("classifyIntent trade routing", () => {
+  it("trade decision query routes to team_audit (not player_research)", () => {
+    const intent = classifyIntent(
+      "I can trade Naz Reid for Draymond Green. Should I accept?"
+    );
+    expect(intent).toBe("team_audit");
+    expect(intent).not.toBe("player_research");
+  });
+});

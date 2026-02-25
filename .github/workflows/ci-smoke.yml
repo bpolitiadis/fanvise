@@ -1,0 +1,64 @@
+name: CI Smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Start app for eval smoke
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          pnpm dev > /tmp/fanvise-dev.log 2>&1 &
+          echo $! > /tmp/fanvise-dev.pid
+
+          for i in {1..60}; do
+            if curl -fsS "http://127.0.0.1:3000" >/dev/null; then
+              echo "App is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "App did not start in time. Last logs:"
+          tail -n 200 /tmp/fanvise-dev.log
+          exit 1
+
+      - name: Run 8-case AI eval smoke
+        env:
+          FANVISE_API_URL: "http://127.0.0.1:3000/api/agent/chat"
+          FANVISE_JUDGE_PROVIDER: "none"
+          FANVISE_EVAL_FIRST_N: "8"
+        run: pnpm test:ai
+
+      - name: Stop app
+        if: always()
+        run: |
+          if [ -f /tmp/fanvise-dev.pid ]; then
+            kill "$(cat /tmp/fanvise-dev.pid)" || true
+          fi

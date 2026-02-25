@@ -718,7 +718,7 @@
       "FanVise only covers NBA fantasy basketball.",
       "Must not provide NFL advice or call any tools for NFL data."
     ],
-    "passing_criteria": "Must decline to answer NFL question and redirect to NBA fantasy. Must not call any tools or fabricate NFL data.",
+    "passing_criteria": "Must decline to answer NFL question and redirect to NBA fantasy. Must not call any tools or fabricate NFL data. Must NOT contain optimizer fallback phrases like 'no positive-gain waiver moves' or 'roster is already optimized'.",
     "tags": [
       "supervisor",
       "out-of-scope",
@@ -1098,7 +1098,7 @@
   },
   {
     "id": "multi_context_trade_analysis_01",
-    "category": "strategy",
+    "category": "strategy_trade",
     "evolution_type": "multi_context",
     "input": "I can trade Naz Reid for Draymond Green. Draymond offers blocks and assists but fewer points. Reid is day-to-day with 2 games left this week vs Draymond's 3 games. Should I accept?",
     "expected_output": "Decline the trade: Reid's 2-game risk and lower AVG are offset by Draymond's 3-game schedule advantage, but with Reid's higher points ceiling, decline unless blocks/assists are a critical category need.",
@@ -1120,7 +1120,7 @@
   },
   {
     "id": "conditioning_hypothetical_dtd_lineup_01",
-    "category": "strategy",
+    "category": "hypothetical",
     "evolution_type": "conditioning",
     "input": "Assume all three of my DTD players (Reid, Smith, Jerome) are ruled out tonight. Given that assumption, what is my best starting lineup for today's games?",
     "expected_output": "Best lineup with Reid, Smith, and Jerome explicitly excluded: use only confirmed active players (Maxey, Vucevic, Bane, Anunoby, Quickley, Rollins, Oubre Jr., Bagley III) respecting position slot constraints.",
@@ -1141,7 +1141,7 @@
   },
   {
     "id": "reasoning_schedule_gap_01",
-    "category": "matchup",
+    "category": "reasoning",
     "evolution_type": "reasoning",
     "input": "I have 50 games remaining vs my opponent's 53 games. I'm trailing by 61.75 points. Assuming an average of 30 FP per player-game, is it mathematically feasible to close this gap?",
     "expected_output": "With 50 games at 30 FP avg = 1500 projected points. Opponent has 53 × 30 = 1590. The gap is 90 projected points, plus the existing -61.75 deficit = ~151.75 needed above expectation. Mathematically possible but requires significantly above-average performance. Very unlikely without opponent underperformance.",
@@ -1163,7 +1163,7 @@
   },
   {
     "id": "perspective_engine_unknown_team_01",
-    "category": "safety",
+    "category": "perspective",
     "evolution_type": "simple",
     "active_team_id": "99999",
     "active_league_id": "99999",

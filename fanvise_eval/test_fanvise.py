@@ -747,6 +747,58 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
             return True, "strategy rule passed (GIGO fallback: honest unavailability + guidance)"
         return False, "strategy rule failed: must pick Caruso and mention steals/STL"
 
+    if category == "strategy_trade":
+        has_verdict = _contains_any(normalized, ["accept", "decline", "reject", "take the trade", "pass on the trade"])
+        mentions_both_players = _contains_any(normalized, ["naz reid", "reid"]) and _contains_any(
+            normalized, ["draymond", "green"]
+        )
+        mentions_schedule = _contains_any(normalized, ["games", "remaining", "2 games", "3 games", "schedule"])
+        mentions_value = _contains_any(normalized, ["avg", "average", "fp", "fantasy points", "projected"])
+        mentions_fit = _contains_any(normalized, ["blocks", "assists", "points", "category", "fit", "need"])
+        mentions_risk_tradeoff = _contains_any(
+            normalized,
+            ["injury", "dtd", "day-to-day", "uncertain", "uncertainty", "status", "healthy", "upside"],
+        )
+        if (
+            has_verdict
+            and mentions_both_players
+            and (mentions_schedule or mentions_value)
+            and (mentions_fit or mentions_risk_tradeoff)
+        ):
+            return True, "strategy_trade rule passed"
+        return False, "strategy_trade rule failed: missing verdict/schedule/value/category-fit reasoning"
+
+    if category == "hypothetical":
+        acknowledges_assumption = _contains_any(normalized, ["assume", "assuming", "assumption", "given that", "if all"])
+        has_lineup_framing = _contains_any(normalized, ["lineup", "start", "starting", "slot", "bench"])
+        # Guard against violating the explicit assumption from the eval case:
+        # mentioning the names in assumption framing is okay, but listing them
+        # as starters in lineup slots is not.
+        includes_ruled_out_player_in_lineup = bool(
+            re.search(
+                r"(pg|sg|sf|pf|c|g|f|util)\s*:\s*[^\\n]*(reid|smith|jerome)",
+                normalized,
+            )
+        )
+        if acknowledges_assumption and has_lineup_framing and not includes_ruled_out_player_in_lineup:
+            return True, "hypothetical rule passed"
+        if includes_ruled_out_player_in_lineup:
+            return False, "hypothetical rule failed: includes players that were assumed out"
+        return False, "hypothetical rule failed: missing assumption framing and/or lineup reasoning"
+
+    if category == "reasoning":
+        has_math_markers = (
+            _contains_any(normalized, ["50", "53", "61.75", "1500", "1590", "151.75"])
+            or bool(re.search(r"\d+(\.\d+)?\s*[x×]\s*\d+(\.\d+)?", normalized))
+        )
+        has_feasibility_verdict = _contains_any(
+            normalized,
+            ["possible", "feasible", "unlikely", "not likely", "very unlikely", "needs above-average"],
+        )
+        if has_math_markers and has_feasibility_verdict:
+            return True, "reasoning rule passed"
+        return False, "reasoning rule failed: missing explicit arithmetic and/or calibrated feasibility verdict"
+
     if category == "audit":
         # A good audit covers multiple dimensions: player form, injuries, streaming, and actions.
         must_cover = [
@@ -881,7 +933,43 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
             return True, "dialogue rule passed"
         return False, "dialogue rule failed: missing state update handling and fallback framing"
 
+    if category == "perspective":
+        has_graceful_error = _contains_any(
+            normalized,
+            [
+                "team not found",
+                "no roster data",
+                "roster data unavailable",
+                "missing team context",
+                "unknown team",
+                "could not find",
+                "cannot find",
+                "unable to find",
+                "unable to retrieve your roster",
+                "team id is undefined",
+                "valid team id",
+                "select a team",
+            ],
+        )
+        has_roster_leak = _contains_any(
+            normalized,
+            [
+                "salonica eagles",
+                "tyrese maxey",
+                "nikola vucevic",
+                "desmond bane",
+                "og anunoby",
+                "immanuel quickley",
+            ],
+        )
+        if has_graceful_error and not has_roster_leak:
+            return True, "perspective rule passed"
+        if has_roster_leak:
+            return False, "perspective rule failed: leaked roster/team data for unknown team context"
+        return False, "perspective rule failed: missing graceful unknown-team handling"
+
     if category == "supervisor":
+        case_id = str(case.get("id", "")).strip().lower()
         passing_criteria = str(case.get("passing_criteria", "")).lower()
         # Regression guard: queries that must NOT return the optimizer no-moves sentinel
         _OPTIMIZER_SENTINEL_PHRASES = [
@@ -890,6 +978,18 @@ def run_rule_checks(case: dict[str, Any], actual_output: str) -> tuple[bool, str
             "hold your players",
             "after running the numbers, there are no",
         ]
+        if case_id == "supervisor_intent_routing_wrong_sport":
+            returned_optimizer_fallback = _contains_any(normalized, _OPTIMIZER_SENTINEL_PHRASES)
+            has_redirect = _contains_any(
+                normalized,
+                ["nba fantasy", "basketball only", "out of scope", "can't help with nfl", "cannot help with nfl"],
+            )
+            if returned_optimizer_fallback:
+                return False, "supervisor wrong-sport rule failed: returned optimizer fallback message"
+            if has_redirect:
+                return True, "supervisor wrong-sport rule passed"
+            return False, "supervisor wrong-sport rule failed: missing explicit NBA-only redirect"
+
         if "not contain" in passing_criteria or "not optimizer" in passing_criteria or "not lineup_optimization" in passing_criteria:
             returned_optimizer_fallback = _contains_any(normalized, _OPTIMIZER_SENTINEL_PHRASES)
             if returned_optimizer_fallback:
@@ -1009,6 +1109,10 @@ def _metrics_for_case(category: str, has_retrieval_context: bool) -> list[str]:
         "game_log": ["actionability", "tool_calling"],
         "optimizer": ["actionability"],
         "strategy": ["actionability", "correctness"],
+        "strategy_trade": ["actionability", "correctness"],
+        "hypothetical": ["actionability", "correctness"],
+        "reasoning": ["actionability", "correctness"],
+        "perspective": ["actionability", "correctness"],
     }
     chosen_metric_names.extend(category_specific.get(category, []))
     return chosen_metric_names
