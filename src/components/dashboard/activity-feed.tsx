@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Activity, ArrowRightLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -20,117 +19,132 @@ interface ActivityFeedProps {
   className?: string;
 }
 
+const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  FREEAGENT: { label: "ADD",    color: "text-primary",           bg: "bg-primary/10" },
+  ADD:        { label: "ADD",    color: "text-primary",           bg: "bg-primary/10" },
+  WAIVER:     { label: "WAIVER", color: "text-secondary",         bg: "bg-secondary/10" },
+  TRADE:      { label: "TRADE",  color: "text-violet-400",        bg: "bg-violet-400/10" },
+  DROP:       { label: "DROP",   color: "text-destructive",       bg: "bg-destructive/10" },
+  ROSTER:     { label: "ROSTER", color: "text-muted-foreground/50", bg: "bg-muted/5" },
+};
+
+function getTypeConfig(type: string) {
+  return TYPE_CONFIG[type] ?? { label: type, color: "text-muted-foreground", bg: "bg-muted/10" };
+}
+
+function getTeamInitial(description: string): string {
+  const match = description.match(/^([^:|]+)/);
+  if (!match) return "T";
+  const name = match[1].trim();
+  if (name === "Unknown Team") return "?";
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0] ?? "")
+    .join("")
+    .toUpperCase();
+}
+
 export function ActivityFeed({ transactions, className }: ActivityFeedProps) {
   return (
-    <Card className={cn("bg-card/30 border-border/50", className)}>
-      <CardHeader className="pb-2 border-b bg-muted/20">
-        <CardTitle className="text-sm flex items-center justify-between uppercase tracking-wider text-muted-foreground">
+    <Card className={cn("bg-card/50 border-border/50 shadow-sm", className)}>
+      <CardHeader className="pt-4 pb-3 px-4 border-b border-border/50 bg-muted/20">
+        <CardTitle className="text-xs flex items-center justify-between uppercase tracking-widest font-semibold text-muted-foreground">
           <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-secondary" />
+            <Activity className="w-3.5 h-3.5 text-primary" />
             Recent Activity
           </div>
-          <Link href="#" className="text-[10px] font-normal hover:text-primary transition-colors">View All</Link>
+          <Link
+            href="#"
+            className="text-[9px] font-bold lowercase tracking-wider text-muted-foreground/50 hover:text-primary transition-colors"
+          >
+            View All
+          </Link>
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-0 px-0">
+      <CardContent className="p-0">
         <div className="overflow-hidden">
           <Table>
-              <TableHeader className="bg-muted/10">
-                  <TableRow className="hover:bg-transparent border-b border-white/5">
-                      <TableHead className="w-[120px] text-[10px] uppercase tracking-tighter h-9 px-4 text-muted-foreground/70">Date & Time</TableHead>
-                      <TableHead className="w-[80px] text-[10px] uppercase tracking-tighter h-9 text-muted-foreground/70">Type</TableHead>
-                      <TableHead className="text-[10px] uppercase tracking-tighter h-9 text-muted-foreground/70">Activity Detail</TableHead>
-                      <TableHead className="text-right text-[10px] uppercase tracking-tighter h-9 px-4 text-muted-foreground/70">Action</TableHead>
+            <TableHeader className="bg-muted/10">
+              <TableRow className="hover:bg-transparent border-b border-border/40">
+                <TableHead className="w-[110px] text-[10px] uppercase tracking-widest h-8 px-4 text-muted-foreground/60 font-semibold">
+                  Date
+                </TableHead>
+                <TableHead className="w-[72px] text-[10px] uppercase tracking-widest h-8 text-muted-foreground/60 font-semibold">
+                  Type
+                </TableHead>
+                <TableHead className="text-[10px] uppercase tracking-widest h-8 text-muted-foreground/60 font-semibold">
+                  Detail
+                </TableHead>
+                <TableHead className="text-right text-[10px] uppercase tracking-widest h-8 px-4 text-muted-foreground/60 font-semibold">
+                  Action
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {transactions.slice(0, 10).map((tx) => {
+                const { label, color, bg } = getTypeConfig(tx.type);
+                const txDate = new Date(tx.published_at);
+                const dateStr = txDate.toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                });
+                const timeStr = txDate.toLocaleTimeString(undefined, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                });
+                const teamInitial = getTeamInitial(tx.description);
+
+                return (
+                  <TableRow
+                    key={tx.id}
+                    className="group border-border/40 hover:bg-muted/20 transition-colors"
+                  >
+                    <TableCell className="py-2.5 px-4">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-bold text-foreground">{dateStr}</span>
+                        <span className="text-[10px] text-muted-foreground/60">{timeStr}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-2.5">
+                      <span
+                        className={cn(
+                          "inline-flex px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
+                          bg,
+                          color
+                        )}
+                      >
+                        {label}
+                      </span>
+                    </TableCell>
+                    <TableCell className="py-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-6 h-6 rounded-full bg-muted/50 border border-border/60 shrink-0 flex items-center justify-center text-[9px] font-bold text-muted-foreground">
+                          {teamInitial}
+                        </span>
+                        <span className="text-[12px] font-medium text-foreground group-hover:text-primary transition-colors">
+                          {tx.description}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right py-2.5 px-4">
+                      <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-wider group-hover:text-primary transition-colors cursor-pointer">
+                        Dashboard
+                      </span>
+                    </TableCell>
                   </TableRow>
-              </TableHeader>
-              <TableBody>
-                  {transactions.slice(0, 10).map((tx) => {
-                      let typeColor = "text-muted-foreground";
-                      let typeBg = "bg-muted/10";
-                      let label = tx.type;
-                      
-                      if (tx.type === 'FREEAGENT' || tx.type === 'ADD') {
-                          typeColor = "text-primary";
-                          typeBg = "bg-primary/10";
-                          label = "ADD";
-                      } else if (tx.type === 'WAIVER') {
-                          typeColor = "text-secondary";
-                          typeBg = "bg-secondary/10";
-                          label = "WAIVER";
-                      } else if (tx.type === 'TRADE') {
-                          typeColor = "text-purple-400";
-                          typeBg = "bg-purple-400/10";
-                          label = "TRADE";
-                      } else if (tx.type === 'DROP') {
-                          typeColor = "text-destructive";
-                          typeBg = "bg-destructive/10";
-                          label = "DROP";
-                      } else if (tx.type === 'ROSTER') {
-                          typeColor = "text-muted-foreground/50";
-                          typeBg = "bg-muted/5";
-                          label = "ROSTER";
-                          // If description already explains the move, we could hide this or keep it subtle
-                      }
-
-                      const txDate = new Date(tx.published_at);
-                      const dateStr = txDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                      const timeStr = txDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: true });
-
-                       // Extract team context from description if possible
-                      // Handle formats like "Team Name: action" or "Team Name added Player Name"
-                      const teamNameMatch = tx.description.match(/^([^:|]+)/);
-                      let teamInitial = "T";
-                      if (teamNameMatch) {
-                          const name = teamNameMatch[1].trim();
-                          // Skip "Unknown Team" for initials if possible
-                          if (name === "Unknown Team") {
-                              teamInitial = "?";
-                          } else {
-                              // Get first letter of each word up to 2 words
-                              teamInitial = name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
-                          }
-                      }
-
-                      return (
-                          <TableRow key={tx.id} className="group border-white/5 hover:bg-muted/20 transition-colors">
-                              <TableCell className="py-3 px-4">
-                                  <div className="flex flex-col">
-                                      <span className="text-[11px] font-bold text-foreground">{dateStr}</span>
-                                      <span className="text-[10px] text-muted-foreground font-medium">{timeStr}</span>
-                                  </div>
-                              </TableCell>
-                              <TableCell className="py-3">
-                                  <div className={cn("px-2 py-0.5 rounded text-[9px] font-black uppercase text-center w-fit", typeBg, typeColor)}>
-                                      {label}
-                                  </div>
-                              </TableCell>
-                              <TableCell className="py-3">
-                                  <div className="flex items-center gap-3">
-                                      <div className="w-6 h-6 rounded-full bg-muted/50 border border-white/5 flex items-center justify-center text-[10px] font-bold text-muted-foreground">
-                                          {teamInitial}
-                                      </div>
-                                      <span className="text-xs font-medium group-hover:text-primary transition-colors">
-                                          {tx.description}
-                                      </span>
-                                  </div>
-                              </TableCell>
-                              <TableCell className="text-right py-3 px-4">
-                                  <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] font-bold text-muted-foreground hover:text-primary hover:bg-primary/10 uppercase tracking-tight">
-                                      Dashboard
-                                  </Button>
-                              </TableCell>
-                          </TableRow>
-                      );
-                  })}
-              </TableBody>
+                );
+              })}
+            </TableBody>
           </Table>
-          
+
           {transactions.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
-               <div className="w-12 h-12 rounded-full bg-muted/30 flex items-center justify-center text-muted-foreground/30">
-                  <ArrowRightLeft className="w-6 h-6" />
-               </div>
-               <p className="text-xs text-muted-foreground">Pulse scan: No recent movements</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-muted/30 flex items-center justify-center">
+                <ArrowRightLeft className="w-5 h-5 text-muted-foreground/30" />
+              </div>
+              <p className="text-xs text-muted-foreground">No recent activity</p>
             </div>
           )}
         </div>

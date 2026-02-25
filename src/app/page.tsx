@@ -23,7 +23,7 @@ export default function Home() {
   const [lastNewsSyncAt, setLastNewsSyncAt] = useState<string | null>(null);
 
   useEffect(() => {
-    getLatestNews(10).then(data => setNews(data as NewsItem[]));
+    getLatestNews(100).then(data => setNews(data as NewsItem[]));
   }, []);
 
   useEffect(() => {
@@ -150,24 +150,23 @@ export default function Home() {
         <div className="flex-1 overflow-y-auto">
           <div className="p-6 space-y-8 max-w-[1600px] mx-auto">
             
-            {/* Top Grid: Stats & News */}
+            {/* Top Grid: Intel Feed & Standings */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 items-start">
-              
-              {/* Left Column: Tables stacked */}
+
+              {/* Left Column: Intelligence Feed + Activity */}
               <div className="xl:col-span-2 space-y-6">
-                <StandingsCard 
+                <IntelligenceFeed news={news} />
+                <ActivityFeed transactions={transactions} />
+              </div>
+
+              {/* Right Column: Standings (compact sidebar) */}
+              <div className="xl:col-span-1">
+                <StandingsCard
                   teams={teams}
                   activeTeamId={activeTeamId}
                   mode="full"
                   title="Standings"
                 />
-                
-                <ActivityFeed transactions={transactions} />
-              </div>
-
-              {/* Right Column: Intel Feed (Extended) */}
-              <div className="h-full">
-                <IntelligenceFeed news={news} />
               </div>
             </div>
           </div>
