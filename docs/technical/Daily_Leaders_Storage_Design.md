@@ -70,9 +70,9 @@ Start with **Option A** once you have an ESPN endpoint that returns **stats per 
 ### 3.2 Chatbot: use DB, not (only) PG vector
 
 - **Prefer querying the new table(s)** when the user asks “who shined yesterday?”, “how did my team do yesterday?”, “which free agents performed best yesterday?”:
-  - In `intelligence.service`, detect these intents (keywords / simple classifier or LLM router).
+  - The Supervisor agent detects these intents via intent classification and routes to the appropriate tool.
   - Query `daily_leaders` (and optionally `leagues.teams` / roster) for the relevant `period_date` or `scoring_period_id`.
-  - Inject the result as **structured context** into the system prompt (e.g. “Daily leaders for 2026-02-13: …” and “Your roster’s yesterday performance: …”).
+  - Inject the result as **structured context** into the agent synthesis step (e.g. “Daily leaders for 2026-02-13: …” and “Your roster’s yesterday performance: …”).
 - **PG vector (RAG)** is still useful for **narrative** content (news, injury reports). You can **optionally** add short, human-readable **summaries** of daily leaders (e.g. “On 2026-02-13, top performers: Player A 42 fpts, Player B 38 fpts…”) into a table with an `embedding` column and use RAG for semantic queries like “who went off recently?”. But the **primary** answer for “yesterday’s leaders” or “my team yesterday” should come from the **structured DB table**, not only RAG.
 
 So: **DB = source of truth; chatbot = read from DB (and optionally RAG for fuzzy/summary queries).**
@@ -140,5 +140,5 @@ All of this is feasible once the data is in Postgres and the sync job is in plac
 1. **Discover** the exact ESPN “leaders for one period” API (URL + query params) from the browser.
 2. **Add migration:** create `daily_leaders` (or `player_period_stats`) with columns above.
 3. **Implement** `EspnClient.getLeadersForPeriod(scoringPeriodId)` (or similar) and a small sync script/route that writes to `daily_leaders`.
-4. **Wire chatbot:** in `intelligence.service`, on questions about “yesterday” / “daily leaders” / “my team yesterday”, query `daily_leaders` (+ roster) and append to context.
+4. **Wire chatbot:** expose a `get_daily_leaders` tool in the Supervisor tool registry; on questions about "yesterday" / "daily leaders" / "my team yesterday", the agent queries `daily_leaders` (+ roster) and synthesizes an answer.
 5. **(Later)** Add “Daily leaders” (and “Leaders by day”) UI and API using the same table(s).

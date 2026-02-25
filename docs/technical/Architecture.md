@@ -4,16 +4,14 @@ FanVise is an AI-native fantasy sports intelligence platform designed as a "Gene
 
 ## High-Level Overview
 
-The system acts as a strategic co-manager (General Manager) for ESPN Fantasy Basketball. It aggregates structured data (league rosters, scoring) and unstructured intelligence (news, injury reports) to provide contextually grounded strategic advice. It employs a **Dual-Environment Architecture**, offering both high-performance cloud inference and privacy-focused local models.
+The system acts as a strategic co-manager (General Manager) for ESPN Fantasy Basketball. It aggregates structured data (league rosters, scoring) and unstructured intelligence (news, injury reports) to provide contextually grounded strategic advice. It employs an **Agentic Architecture** powered by a LangGraph Supervisor, supporting both high-performance cloud inference (Gemini) and privacy-focused local models (Ollama).
 
 ```mermaid
 graph TD
     User((User)) -->|Interact| WebUI[Next.js App Router]
     
     subgraph "Next.js Application (Vercel/Node.js)"
-        WebUI --> API_Classic[Classic: /api/chat]
-        WebUI --> API_Agent[Agentic: /api/agent/chat]
-        API_Classic --> IntelligenceSvc[Intelligence Service]
+        WebUI --> API_Agent[/api/agent/chat]
         API_Agent --> Supervisor[LangGraph Supervisor - Router]
         
         Supervisor -->|lineup_optimization| LineupOptimizer[LineupOptimizerGraph<br/>6 nodes, 1 LLM call]
@@ -21,12 +19,11 @@ graph TD
         
         LineupOptimizer --> OptimizerSvc[Optimizer Service<br/>Deterministic Math]
         
-        IntelligenceSvc --> Orchestrator[AI Service]
-        ReActLoop --> Orchestrator
+        ReActLoop --> Orchestrator[AI Service]
         LineupOptimizer --> Orchestrator
         
-        IntelligenceSvc --> LeagueSvc[League/Team Context Service]
-        IntelligenceSvc --> RAG[RAG Pipeline/News Service]
+        ReActLoop --> RAG[RAG Pipeline/News Service]
+        ReActLoop --> LeagueSvc[League/Team Context Service]
     end
     
     subgraph "Intelligence Providers"
@@ -38,17 +35,16 @@ graph TD
         RAG --> SupabaseVector[Supabase pgvector]
         LeagueSvc --> SupabaseDB[Supabase Postgres]
         OptimizerSvc --> SupabaseDB
-        API_Classic --> ESPN[ESPN Private API]
-        API_Agent --> ESPN
+        API_Agent --> ESPN[ESPN Private API]
     end
 ```
 
-## Dual-Mode AI Execution
+## Agentic AI Execution
 
-The system provides two active AI execution paths:
+All intelligence flows through a single path: the **LangGraph Supervisor** (`/api/agent/chat`). The Supervisor classifies intent deterministically and routes to one of two execution subgraphs:
 
-1. **Classic Mode (`/api/chat`)**: single-pass Retrieval-Augmented Generation (RAG) via `IntelligenceService` for fast, deterministic strategy answers.
-2. **Agentic Mode (`/api/agent/chat`)**: LangGraph supervisor orchestration with tool-calling for deeper, iterative analysis.
+1. **LineupOptimizerGraph** (`lineup_optimization` intent): 6-node deterministic optimizer ending in a single focused LLM synthesis call.
+2. **ReAct Agent Loop** (all other intents): Iterative tool-calling loop with access to the full 14-tool registry — player research, roster analysis, waiver wire, news retrieval, and more.
 
 ## Key Architectural Principles
 

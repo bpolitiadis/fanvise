@@ -4,14 +4,13 @@
 
 FanVise is an AI-native strategic platform for ESPN Fantasy Basketball (H2H Points). It acts as a **General Manager**—your data-obsessed, trash-talking friend who bridges the gap between raw league data and winning decisions.
 
-## 🧠 Dual-Mode AI Architecture
+## 🧠 Agentic AI Architecture
 
-FanVise provides two discrete AI execution paths:
+FanVise runs on a single, unified AI execution path powered by a **LangGraph Supervisor**:
 
-1. **Classic Mode** (`/api/chat`): High-speed, single-pass Retrieval-Augmented Generation (RAG). Perfect for instant lineup advice and summarizing daily news.
-2. **Agentic Mode** (`/api/agent/chat`): Autonomous LangGraph agents capable of performing iterative, deep-dive research (e.g., live injury tracking and multi-player comparisons) via tool-calling.
+- **Agentic Mode** (`/api/agent/chat`): Autonomous LangGraph agents capable of iterative, deep-dive research — live injury tracking, multi-player comparisons, lineup optimization — all via tool-calling with real-time ESPN data.
 
-You can run both modes using either **Cloud (Google Gemini 2.0)** or **Local (Ollama / Llama 3.1)** models, depending on your privacy requirements.
+Supports **Cloud (Google Gemini 2.0)** or **Local (Ollama / Llama 3.1)** model providers.
 
 ## 🚀 Getting Started
 
@@ -39,7 +38,7 @@ We maintain centralized, clean documentation for the architecture and AI models 
 
 *   **[Documentation Index](./docs/README.md)**
 *   **[System Architecture](./docs/technical/Architecture.md)**
-*   **[API & Agents (Classic vs Agentic)](./docs/technical/API_and_Agents.md)**
+*   **[API & Agents](./docs/technical/API_and_Agents.md)**
 
 ## Tech Stack Overview
 
@@ -49,9 +48,9 @@ We maintain centralized, clean documentation for the architecture and AI models 
 
 ## AI Evaluation (FanVise Combine)
 
-The repository includes a standalone black-box RAG evaluation suite in `fanvise_eval/`.
+The repository includes a standalone black-box evaluation suite in `fanvise_eval/`.
 *   Run with: `pnpm test:ai`
-*   Evaluations target `http://localhost:3000/api/chat` using `fanvise_eval/golden_dataset.json`.
+*   Evaluations target `http://localhost:3000/api/agent/chat` using `fanvise_eval/golden_dataset.json`.
 
 ## Operations (CLI Tools)
 

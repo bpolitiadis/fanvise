@@ -13,7 +13,7 @@ export type QueryIntent =
   | "free_agent_scan"      // Browse + rank the waiver wire
   | "matchup_analysis"     // Compare my team vs opponent
   | "lineup_optimization"  // Full week plan: drops, adds, daily lineup
-  | "general_advice"       // Everything else — falls back to classic RAG chat
+  | "general_advice"       // Everything else — handled by the ReAct agent loop
 
 /** Confidence tiers used across agents */
 export type ConfidenceTier = "HIGH" | "MEDIUM" | "LOW"

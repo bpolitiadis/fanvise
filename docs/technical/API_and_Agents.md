@@ -1,19 +1,9 @@
 # API Services & AI Agents
 
-FanVise currently supports a **dual-mode AI architecture**:
-- **Classic mode** (`POST /api/chat`): single-pass RAG pipeline for fast, reliable strategy answers.
-- **Agentic mode** (`POST /api/agent/chat`): LangGraph supervisor with tool-calling for deeper, iterative analysis.
+FanVise uses a **single agentic AI architecture**. All intelligence requests flow through:
+- **Agentic mode** (`POST /api/agent/chat`): LangGraph Supervisor with tool-calling for iterative, data-grounded analysis across all query types.
 
-## 1. Classic Mode (`POST /api/chat`)
-
-Classic mode delegates to the `IntelligenceService` (`src/services/intelligence.service.ts`) and follows a deterministic orchestration path:
-1. **RAG Retrieval**: `NewsService` fetches relevant news and injury reports.
-2. **Context Building**: `LeagueService` builds a league/team snapshot.
-3. **Daily Leaders Context**: `buildDailyLeadersContext` adds scoring-period context when relevant ("who shined yesterday?", "my team yesterday").
-4. **Prompt Engineering**: `prompts/index.ts` constructs the grounded system prompt.
-5. **Generative Execution**: `AIService` streams the answer back to the client.
-
-## 2. Agentic Mode (`POST /api/agent/chat`)
+## Chat Endpoint (`POST /api/agent/chat`)
 
 ### Optimizer Stream Protocol (Phase 3)
 
@@ -59,9 +49,9 @@ Agentic mode uses the supervisor graph (`src/agents/supervisor/agent.ts`) to cho
 
 This mode is best for deep-dive questions where the model must combine multiple lookups and reasoning steps before answering.
 
-## Chat Route Behavior (Both Endpoints)
+## Chat Route Behavior
 
-Both chat routes apply the same core safety and delivery patterns:
+The agent route applies these core safety and delivery patterns:
 - **Perspective authorization** through `authorizePerspectiveScope` (`src/utils/auth/perspective-authorization.ts`) before building league/team context.
 - **Stream heartbeat token** (`[[FV_STREAM_READY]]`) so clients/proxies receive immediate bytes during slow context assembly or local model startup.
 - **Eval mode support** (`evalMode=true`) with structured debug output in development workflows.
@@ -96,9 +86,9 @@ The Supervisor and specialized agents share 14 tools:
 | `simulate_move` | **NEW (Phase 1)** — Deterministic drop/add simulation: returns `netGain`, `baselineWindowFpts`, `projectedWindowFpts`, `isLegal` |
 | `validate_lineup_legality` | **NEW (Phase 1)** — Checks daily lineup slot legality, identifies unfilled slots and wasted starts |
 
-## Evaluation Agent (Standalone)
+## Evaluation Suite (Standalone)
 
-`fanvise_eval/test_fanvise.py` runs black-box checks against `/api/chat`:
+`fanvise_eval/test_fanvise.py` runs black-box checks against `/api/agent/chat`:
 - Sends prompts from `fanvise_eval/golden_dataset.json`.
 - Captures output and optional `debug_context`.
 - Applies deterministic policy/math checks.

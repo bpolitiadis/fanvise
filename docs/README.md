@@ -8,7 +8,7 @@ Understanding the *why* and *what* of FanVise.
 *   **[Product Requirements Document (PRD)](./genesis/FanVise%20PRD_%20AI%20Fantasy%20Sports%20Strategy.md)**
     *   Defines the core value proposition: "The Intelligent Edge for Fantasy Basketball."
     *   Outlines the "General Manager" persona and simplified Perspective logic.
-    *   Details the pivot to a Dual-Environment Architecture (Next.js + Supabase).
+    *   Details the Agentic Architecture (Next.js + Supabase + LangGraph Supervisor).
 
 ## 🛠️ Technical Documentation
 Deep dives into the system architecture and implementation details.
@@ -32,6 +32,6 @@ Deep dives into the system architecture and implementation details.
 
 ## AI QA Evaluation
 
-*   **FanVise Combine**: Standalone black-box RAG evaluator in `../fanvise_eval/`.
-*   Targets the public API endpoint `http://localhost:3000/api/chat`.
+*   **FanVise Combine**: Standalone black-box evaluator in `../fanvise_eval/`.
+*   Targets the Agentic endpoint `http://localhost:3000/api/agent/chat`.
 *   Run via root script: `pnpm test:ai`.

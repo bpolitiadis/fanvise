@@ -36,7 +36,7 @@ The "Perspective Engine" dynamically injects context into the application based 
 
 The system uses two complementary data strategies:
 
-### Scheduled Sync (Classic RAG)
+### Scheduled Sync (News & RAG Pipeline)
 1. **RSS Ingestion**: Periodically fetches raw news from ESPN, Rotowire, CBS Sports.
 2. **AI-Driven Processing**: LLM extracts structured metadata (Sentiment, Player, Category).
 3. **Vector Encoding**: Content stored as 768-dim embeddings in `news_items`.

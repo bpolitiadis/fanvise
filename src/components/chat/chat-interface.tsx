@@ -15,17 +15,12 @@ import {
   Activity,
   ChevronDown,
   CheckCircle2,
-  Bot,
-  Cpu,
   Scissors,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { usePerspective } from "@/lib/perspective-context";
-import {
-  useChatHistory,
-  type ChatMode,
-} from "@/components/chat/chat-history-context";
+import { useChatHistory } from "@/components/chat/chat-history-context";
 import type { ChatLanguage, ChatMessage } from "@/types/ai";
 import type { MovesStreamPayload } from "@/types/optimizer";
 
@@ -102,42 +97,6 @@ const getProviderPricing = (provider: ResponseCostEstimate["provider"]) => {
   };
 };
 
-// ─── Agent Mode Toggle ────────────────────────────────────────────────────────
-
-interface AgentModeToggleProps {
-  isAgent: boolean;
-  onToggle: () => void;
-  size?: "sm" | "lg";
-}
-
-function AgentModeToggle({ isAgent, onToggle, size = "sm" }: AgentModeToggleProps) {
-  const isLarge = size === "lg";
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      title={isAgent ? "Switch to Classic mode" : "Switch to Agent mode (live research)"}
-      aria-label={isAgent ? "Disable agent mode" : "Enable agent mode"}
-      className={`relative flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        isLarge ? "h-10 text-xs" : "h-8 text-[11px]"
-      } ${
-        isAgent
-          ? "border-violet-500/40 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20"
-          : "border-muted text-muted-foreground hover:border-primary/30 hover:text-primary/70"
-      }`}
-    >
-      {isAgent ? (
-        <Bot className={isLarge ? "h-4 w-4" : "h-3.5 w-3.5"} />
-      ) : (
-        <Cpu className={isLarge ? "h-4 w-4" : "h-3.5 w-3.5"} />
-      )}
-      <span className="hidden font-bold uppercase tracking-wider sm:inline">
-        {isAgent ? "Agent" : "Classic"}
-      </span>
-    </button>
-  );
-}
-
 // ─── Cost estimation ──────────────────────────────────────────────────────────
 
 const estimateResponseCost = ({
@@ -185,14 +144,11 @@ export function ChatInterface() {
     activeConversationId,
     createConversation,
     setActiveConversation,
-    setConversationMode,
     upsertConversation,
   } = useChatHistory();
 
   const messages = useMemo(() => activeConversation?.messages ?? [], [activeConversation?.messages]);
   const responseLanguage: ChatLanguage = activeConversation?.language ?? "en";
-  const chatMode: ChatMode = activeConversation?.mode ?? "agent";
-  const isAgentMode = chatMode === "agent";
 
   const showToast = (title: string, description?: string) => {
     const nextToast = { id: crypto.randomUUID(), title, description };
@@ -282,8 +238,7 @@ export function ChatInterface() {
       language: responseLanguage,
     };
 
-    // Route to the appropriate backend based on the active chat mode
-    const endpoint = isAgentMode ? "/api/agent/chat" : "/api/chat";
+    const endpoint = "/api/agent/chat";
 
     const response = await fetch(endpoint, {
       method: "POST",
@@ -441,23 +396,6 @@ export function ChatInterface() {
     void handleSubmit(undefined, action);
   };
 
-  const handleToggleMode = () => {
-    const nextMode: ChatMode = isAgentMode ? "classic" : "agent";
-    if (activeConversationId) {
-      setConversationMode(activeConversationId, nextMode);
-    } else {
-      // No conversation yet — create one with the target mode so first message uses it
-      const newId = createConversation(activeTeamId ?? null, responseLanguage, nextMode);
-      void newId;
-    }
-    showToast(
-      nextMode === "agent" ? "Agent Mode On" : "Classic Mode On",
-      nextMode === "agent"
-        ? "Supervisor agent will research live data."
-        : "Single-pass RAG — fast and lightweight."
-    );
-  };
-
   const thinkingIndicator = (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -525,7 +463,6 @@ export function ChatInterface() {
               placeholder="Request strategic directive, waiver scan, or trade audit..."
               className="h-14 flex-1 rounded-none border-0 px-4 text-lg font-medium shadow-none placeholder:text-muted-foreground/50 focus-visible:ring-0"
             />
-            <AgentModeToggle isAgent={isAgentMode} onToggle={handleToggleMode} size="lg" />
             <Button
               type="submit"
               size="icon"
@@ -680,11 +617,7 @@ export function ChatInterface() {
         <div className="mx-auto max-w-3xl">
           <form
             onSubmit={handleSubmit}
-            className={`relative flex w-full items-center overflow-hidden rounded-2xl border-2 bg-background p-1 shadow-xl transition-all focus-within:ring-4 ${
-              isAgentMode
-                ? "border-violet-500/30 focus-within:border-violet-500/50 focus-within:ring-violet-500/10"
-                : "border-primary/10 focus-within:border-primary/30 focus-within:ring-primary/5"
-            }`}
+            className="relative flex w-full items-center overflow-hidden rounded-2xl border-2 border-violet-500/30 bg-background p-1 shadow-xl transition-all focus-within:border-violet-500/50 focus-within:ring-4 focus-within:ring-violet-500/10"
           >
             <div className="mr-2 hidden items-center gap-2 border-r border-primary/10 px-3 py-2 sm:flex">
               <Sparkles className="h-4 w-4 text-primary" />
@@ -693,23 +626,16 @@ export function ChatInterface() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
-                isAgentMode
-                  ? "Agent will research live data for your question..."
-                  : responseLanguage === "el"
+                responseLanguage === "el"
                   ? "Υποβολή ερωτήματος στον Strategist..."
-                  : "Submit inquiry to Strategist..."
+                  : "Agent will research live data for your question..."
               }
               className="h-12 flex-1 rounded-none border-0 px-4 text-base font-medium shadow-none focus-visible:ring-0"
             />
-            <AgentModeToggle isAgent={isAgentMode} onToggle={handleToggleMode} size="sm" />
             <Button
               type="submit"
               size="icon"
-              className={`mr-1 h-10 w-10 rounded-xl shadow-lg transition-all hover:opacity-90 active:scale-95 ${
-                isAgentMode
-                  ? "bg-violet-600 shadow-violet-500/20"
-                  : "bg-primary shadow-primary/20"
-              }`}
+              className="mr-1 h-10 w-10 rounded-xl bg-violet-600 shadow-lg shadow-violet-500/20 transition-all hover:opacity-90 active:scale-95"
               disabled={isLoading || !input.trim()}
             >
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -718,12 +644,8 @@ export function ChatInterface() {
           <div className="mt-2 text-center">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/80">
               Perspective: {activeTeam?.manager ?? "No Team"} •{" "}
-              {isAgentMode ? (
-                <span className="text-violet-400">Agent Mode</span>
-              ) : (
-                "Classic"
-              )}{" "}
-              • Language: {responseLanguage === "el" ? "Greek" : "English"}
+              <span className="text-violet-400">Agentic Mode</span>
+              {" "}• Language: {responseLanguage === "el" ? "Greek" : "English"}
             </p>
           </div>
         </div>
