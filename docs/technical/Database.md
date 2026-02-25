@@ -5,7 +5,16 @@ FanVise uses Supabase (PostgreSQL) as its primary data store. The schema is opti
 ## Core Schema
 
 ### Leagues & Teams
-- **`leagues`**: Central repository for ESPN league metadata, including `scoring_settings`, `roster_settings`, and `draft_detail` (stored as JSONB). The `teams` JSONB array includes `wins`, `losses`, `ties`, `pointsFor`, and `pointsAgainst` per team — populated from ESPN `mTeam record.overall` on every league sync.
+- **`leagues`**: Central repository for ESPN league metadata. JSONB columns:
+  - `scoring_settings`: League scoring configuration.
+  - `roster_settings`: Slot counts per position.
+  - `draft_detail`: Full draft pick history from ESPN `mDraftDetail`.
+  - `positional_ratings`: ESPN positional rankings from `mPositionalRatings`.
+  - `live_scoring`: In-progress scoring data from `mLiveScoring`.
+  - `roster_snapshot`: Full roster JSONB array captured on every sync (provides staleness fallback when ESPN is unreachable).
+  - `roster_snapshot_at`: Timestamp of the last roster snapshot.
+  - `teams`: JSONB array with `wins`, `losses`, `ties`, `pointsFor`, `pointsAgainst` per team — populated from ESPN `mTeam record.overall` via `mapEspnLeagueData()`.
+  - Team names are resolved via `resolveTeamName()` (prioritises `location + nickname` over the stale `name` field).
 - **`user_leagues`**: Junction table linking authenticated users to their specific teams and leagues.
 - **`daily_leaders`**: Per-scoring-period player performance snapshots used for "who shined yesterday?", "my team yesterday", and free-agent leader context in chat.
 - **`league_transactions`**: Stores ESPN transaction history (pickups, drops, trades).

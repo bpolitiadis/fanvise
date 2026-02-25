@@ -21,9 +21,9 @@ graph LR
 
 ## 1. Ingestion Strategy
 
-News is ingested through two primary channels:
-- **RSS Feeds**: Real-time polling of feeds from Rotowire, ESPN, Yahoo Sports, and CBS Sports.
-- **Historical Backfill**: Direct integration with the ESPN News API to fetch historical context up to 14 days back.
+News is ingested through two primary channels and strategies:
+- **Static-Cron Strategy**: Scheduled ingestion from **RSS Feeds** (Rotowire, ESPN, Yahoo, CBS) and **Historical Backfill** via ESPN APIs at set intervals.
+- **Live-First Retrieval Strategy**: An on-demand **Parallel Search** triggered by user queries. When a manager asks about a specific player, the system returns cached DB results immediately while simultaneously triggering a background/synchronous live-fetch (e.g. Edge Function) if the cache is older than X minutes. This ensures the DB is incrementally updated without blocking the UI response.
 
 ### Execution Guardrails
 

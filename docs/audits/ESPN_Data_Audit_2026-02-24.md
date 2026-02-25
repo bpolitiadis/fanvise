@@ -179,3 +179,36 @@ All code-only and schema-change P2 items have been resolved:
 | N10 | Renamed `impacted_player_ids` → `impacted_player_names` (migration + code) | ✅ Done |
 | S1 | Added `roster_snapshot` + `roster_snapshot_at` to `leagues` (migration + code) | ✅ Done |
 | S3 | `game_date` now resolved from `nba_schedule` on every game log write | ✅ Done |
+
+---
+
+## Deep Data Audit — 2026-02-25
+
+**Scope:** Full-stack re-audit of the ESPN data pipeline from client through mappers, services, and agent tools.
+
+### New Critical Bugs Found & Fixed
+
+| ID | Issue | Severity | Fix |
+|----|-------|----------|-----|
+| **DA1** | `EspnClient` constructor defaulted `sport` to `"ffl"` (football) instead of `"fba"` (basketball) — every API call to a newly constructed client hit the wrong sport endpoint | **P0** | Default changed to `"fba"` |
+| **DA2** | `EspnClient.getFreeAgents()` — `positionId=0` (Point Guard) treated as falsy in `positionId ? {...} : undefined`, causing PG filter to be silently dropped | **P0** | Changed to `typeof positionId === "number"` check |
+| **DA3** | `sync-league.ts` never stored `draft_detail`, `positional_ratings`, `live_scoring`, `roster_snapshot`, or `roster_snapshot_at` — most league JSONB fields were always `null` | **P1** | Refactored to use `mapEspnLeagueData()` and store all fields |
+| **DA4** | `PlayerService.mapEspnPlayerToContext()` stored raw numeric pro team ID as `proTeam` (e.g. `"13"`) instead of the abbreviation (`"LAL"`) — confusing for LLM context | **P1** | Now resolves via `ESPN_PRO_TEAM_MAP` and stores both `proTeam` + `proTeamId` |
+| **DA5** | `DailyLeadersService.extractStatsForPeriod()` did not filter on `statSplitTypeId=1` — could select projected or season-total stats instead of per-game actuals | **P1** | Added explicit `statSplitTypeId===1` + `statSourceId===0` priority filter |
+| **DA6** | `DailyLeadersService` used `appliedAverage` as fallback for `fantasyPoints` on a single game — misleading metric | **P1** | Returns `null` when both `appliedStatTotal` and `appliedTotal` are missing |
+| **DA7** | Team names inconsistently constructed (some used `name`, some `location+nickname`, some raw strings) across services, actions, and tools | **P1** | Centralised `resolveTeamName()` utility used everywhere |
+| **DA8** | Tool registry: 4 tools used `Number(player.proTeam)` which returns `NaN` after DA4 fix changed `proTeam` to abbreviation | **P0** | Changed to `player.proTeamId ?? Number(player.proTeam)` |
+| **A8** | `formatSnapshotForPrompt()` omitted free agents, transactions, and schedule data from prompt context | Medium | Now includes all snapshot sections |
+
+### Test Coverage Added
+
+6 new test files (92 tests total) covering the fixed code paths:
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `src/lib/espn/mappers.test.ts` | 24 | `resolveTeamName`, `mapEspnLeagueData`, team/player mapping |
+| `src/lib/espn/constants.test.ts` | 12 | Stat/position/pro-team map completeness |
+| `src/lib/espn/client.test.ts` | 15 | Constructor defaults, URL building, filter construction |
+| `src/services/player.service.test.ts` | 11 | `proTeam` resolution, free agent mapping |
+| `src/services/daily-leaders.service.test.ts` | 13 | Stat extraction priority, fantasy points fallback |
+| `src/services/game-log.service.test.ts` | 17 | Game log parsing, stat period filtering |

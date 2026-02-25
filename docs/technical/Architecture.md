@@ -1,98 +1,75 @@
-# System Architecture
+# System Architecture Guide
 
-FanVise is an AI-native fantasy sports intelligence platform designed as a "General Manager" layer on top of existing fantasy ecosystem. The application is built as a unified, standalone Next.js solution that integrates data ingestion, AI orchestration, and RAG pipelines into a single high-performance deployment.
+FanVise is a next-generation AI-native fantasy sports platform. It acts as an autonomous **General Manager**, serving as an analytical layer atop traditional fantasy sports data schemas. Built primarily for ESPN Fantasy Basketball (H2H Points), the system unifies deterministic data ingestion with stochastic LLM interactions, delivering context-aware strategic insights rapidly to the end user.
 
-## High-Level Overview
+## 🏗️ High-Level Architectural Flow
 
-The system acts as a strategic co-manager (General Manager) for ESPN Fantasy Basketball. It aggregates structured data (league rosters, scoring) and unstructured intelligence (news, injury reports) to provide contextually grounded strategic advice. It employs an **Agentic Architecture** powered by a LangGraph Supervisor, supporting both high-performance cloud inference (Gemini) and privacy-focused local models (Ollama).
+The architecture focuses on creating a single, robust AI entry point (`/api/agent/chat`) that acts as a router for all user intents. It leverages **LangGraph** to determine the optimal execution pathway—either a deterministic calculation flow or an iterative RAG (Retrieval-Augmented Generation) loop. 
 
 ```mermaid
 graph TD
-    User((User)) -->|Interact| WebUI[Next.js App Router]
+    %% Base Interaction
+    User((User)) -->|Queries chat| WebUI[Next.js App Router]
+    WebUI --> API_Agent[/api/agent/chat]
     
-    subgraph "Next.js Application (Vercel/Node.js)"
-        WebUI --> API_Agent[/api/agent/chat]
-        API_Agent --> Supervisor[LangGraph Supervisor - Router]
+    %% Supervisor Routing Layer
+    subgraph "Agentic Orchestration (Next.js Node/Edge)"
+        API_Agent --> Supervisor{LangGraph Supervisor}
         
-        Supervisor -->|lineup_optimization| LineupOptimizer[LineupOptimizerGraph<br/>6 nodes, 1 LLM call]
-        Supervisor -->|other intents| ReActLoop[ReAct Agent Loop<br/>tool-calling]
-        
-        LineupOptimizer --> OptimizerSvc[Optimizer Service<br/>Deterministic Math]
-        
-        ReActLoop --> Orchestrator[AI Service]
-        LineupOptimizer --> Orchestrator
-        
-        ReActLoop --> RAG[RAG Pipeline/News Service]
+        Supervisor -->|Intent: Lineup Optimization| LineupOptimizer[LineupOptimizerGraph]
+        Supervisor -->|Intent: General Scouting/Advice| ReActLoop[ReAct Tool-Calling Agent Loop]
+    end
+    
+    %% Deterministic Core
+    subgraph "Service Layer"
+        LineupOptimizer --> OptimizerSvc[Optimizer Service]
         ReActLoop --> LeagueSvc[League/Team Context Service]
+        OptimizerSvc --> MathEngine[[Zero-LLM Math/Validation]]
     end
     
-    subgraph "Intelligence Providers"
-        Orchestrator --> Gemini[Google Gemini 2.0 Flash]
-        Orchestrator -.-> Ollama[Local: Llama 3.1 / Ollama]
+    %% RAG & Intelligence 
+    subgraph "Intelligence Pipeline"
+        ReActLoop --> NewsSvc[News RAG Service]
+        NewsSvc --> AISvc[AI Service / Extraction]
     end
     
-    subgraph "Data & Persistence"
-        RAG --> SupabaseVector[Supabase pgvector]
-        LeagueSvc --> SupabaseDB[Supabase Postgres]
-        OptimizerSvc --> SupabaseDB
-        API_Agent --> ESPN[ESPN Private API]
+    %% External Nodes
+    subgraph "Data Storage & APIs"
+        NewsSvc -.->|Hybrid Search| SupabaseVector[(Supabase pgvector)]
+        LeagueSvc -.-> SupabaseDB[(Supabase Postgres)]
+        OptimizerSvc -.-> SupabaseDB
+        LeagueSvc -.->|Live Fetch| ESPN[ESPN Private API]
     end
+
+    %% Providers
+    AISvc -.-> Gemini[Google Gemini 2.0 Flash]
+    AISvc -.-> Ollama[Llama 3.1 / Ollama Local]
 ```
 
-## Agentic AI Execution
+## 🧠 Key Architectural Principles
 
-All intelligence flows through a single path: the **LangGraph Supervisor** (`/api/agent/chat`). The Supervisor classifies intent deterministically and routes to one of two execution subgraphs:
+1. **AI-Native, Single Pathway Interface:** User interactions are not sharded across static subpages; instead, intelligence requests run through the Next.js `POST /api/agent/chat` endpoint. The LLM dictates formatting and tool utilization deterministically.
+2. **Contextual Grounding (The "Settings" Paradigm):** A user's active context (League ID, Team ID) dictates exactly what data is retrieved. This bounds the LLM's reality, drastically reducing hallucination by anchoring discussions strictly to the rules of the specific league and the user's specific roster.
+3. **Deterministic Math, Stochastic Explanations:** Core logic like fantasy point calculation, valid lineup construction, and daily volume estimation are handled by traditional programmatic services (e.g., `OptimizerService`). The LLM is used merely to *run* the script conceptually and translate the math output into natural language.
+4. **Hybrid RAG Capabilities:** FanVise merges structured database records (like player scoring averages and schedules) with rich unstructured context (embedded text from RSS news items) via Supabase pgvector.
 
-1. **LineupOptimizerGraph** (`lineup_optimization` intent): 6-node deterministic optimizer ending in a single focused LLM synthesis call.
-2. **ReAct Agent Loop** (all other intents): Iterative tool-calling loop with access to the full 14-tool registry — player research, roster analysis, waiver wire, news retrieval, and more.
+## ⚙️ Core Operational Vectors
 
-## Key Architectural Principles
+To ensure the AI is never working with stale data, backend data pipelines operate asynchronously alongside the application logic.
 
-1. **Setting-Driven Perspective**: The core logic is driven by the user's `activeLeagueId` and `activeTeamId` settings. The system can switch perspective to any team in a league (e.g., to simulate an opponent) simply by changing these settings.
-2. **AI-First Orchestration**: The AI is not a separate feature but the primary interface for decision-making.
-3. **Hybrid RAG**: Combines structured league data (rosters, scoring) with unstructured news and intelligence (injury reports, trade rumors).
-4. **Edge Readiness**: Built on Next.js 15+ with Tailwind CSS v4, optimized for low latency and responsive interactions.
+### 1. The Real-Time Intelligence (News) Sync
+Implemented via a mix of scheduled executions and manual operator triggers:
+* **Cron Execution**: Automated ingestion workflows configured via GitHub Actions (`.github/workflows/news-ingest-cron.yml`), hitting `GET /api/cron/news`. This workflow runs globally twice a day (11:00 UTC and 22:00 UTC).
+* **Manual Override**: Operators can manually sync news via dashboard tools executing `POST /api/news/sync`, passing internal auth headers (`x-fanvise-sync-intent`).
 
-## Deployment Stack
+*See [News Ingestion Engine](./News-Ingestion.md) for deeper details on RSS parsing and AI Metadata Extraction.*
 
-- **Frontend/Backend**: Next.js (Deployed on Vercel)
-- **Database/Auth**: Supabase (PostgreSQL + pgvector)
-- **AI Models**: Google Gemini 2.0 Flash (via Google Generative AI SDK)
-- **Data Ingestion**: Custom TypeScript clients for ESPN and RSS scraping.
+### 2. League State Synchronization
+Decoupled distinctly from unstructured news sync to prevent expensive database writes on every page load.
+* Routes like `POST /api/sync/player-status` update snapshot statuses globally, enabling rapid pre-computations (e.g., filtering out players marked `OUT` from lineup optimization tools natively before invoking the LLM).
 
-## Sync Orchestration
+## 🚀 Room for Improvement / Next Steps
 
-FanVise now separates league synchronization from news intelligence ingestion so costly AI/pgvector writes only happen on explicit paths.
-
-- **Scheduled News Sync (automatic, restricted):**
-  - Route: `GET /api/cron/news`
-  - Scope: **news-only** ingestion (`fetchAndIngestNews`) with Gemini extraction/embeddings.
-  - Guardrails: production-only, optional `CRON_SECRET`, and strict UTC windows (`11:00` and `22:00`).
-  - Trigger: GitHub Actions workflow `.github/workflows/news-ingest-cron.yml`.
-
-- **Manual News Sync (operator action):**
-  - Route: `POST /api/news/sync`
-  - Scope: **news-only** ingestion/backfill.
-  - Guardrails: requires explicit intent header `x-fanvise-sync-intent: manual-news-sync`.
-  - UI: Dashboard `Sync News` button with last-sync label.
-
-- **League Sync (separate from news):**
-  - Routes: `POST /api/sync`, `POST /api/sync/player-status`, `POST /api/sync/daily-leaders`
-  - Scope: ESPN league metadata, transactions, player status snapshots, and daily leaders.
-  - Single-league mode: league/season are read from `NEXT_PUBLIC_ESPN_LEAGUE_ID` and `NEXT_PUBLIC_ESPN_SEASON_ID`.
-  - Note: daily leaders sync now performs a best-effort schedule sync if no scoring period can be resolved yet.
-  - UI: Dashboard `Sync League` button.
-
-## Production Mode Notes (Current)
-
-- **Current live mode**: single-league, env-driven perspective (not full multi-user `profiles`/`user_leagues` flow).
-- **Public perspective fallback**: controlled by `ALLOW_PUBLIC_PERSPECTIVE_FALLBACK` (and defaults to enabled outside production).
-- **Gemini retry cap**: `RETRY_MAX_DELAY_MS` is used to prevent long 429 backoffs from causing runtime hangs.
-
-## Rollback / Future Reversal
-
-When multi-user auth is fully implemented in production, revert this temporary single-league posture:
-
-1. Set `ALLOW_PUBLIC_PERSPECTIVE_FALLBACK=false`.
-2. Keep `user_leagues` populated for authenticated users and enforce membership-only perspective.
-3. Optionally remove first-team fallback defaults in client perspective resolution.
+* **Implementation of Multi-Tenancy (Phase 3 Authentication):** At present, FanVise heavily leverages environment-driven defaults (`NEXT_PUBLIC_ESPN_LEAGUE_ID`). Expanding fully into production dictates migrating to a multi-tenant `user_leagues` enforcement layer, ensuring strict Row-Level Security (RLS) policies within Supabase govern all read operations.
+* **Persistent Cache Layers:** While Next.js App Router `unstable_cache` is utilized within `LeagueService` for in-flight deduplication, architecting a true distributed cache layer (such as Upstash/Redis) for ESPN schedule lookups and daily leader stat aggregations will lower operational latency constraints significantly.
+* **Asynchronous Webhook Subscriptions:** Modifying the data ingest loop from a "pull" based RSS poll, toward pushing native Webhooks for injury updates would decrease Time-To-Intelligence (TTI) for crucial fantasy decision drops.

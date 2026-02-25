@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — ESPN integrity + live status reliability (2026-02-25)
+
+- **ESPN client defaults and filters** — `EspnClient` now defaults to `fba` instead of `ffl`, and `getFreeAgents(positionId)` correctly accepts `0` (PG) instead of dropping it as a falsy value. (`src/lib/espn/client.ts`)
+- **Team identity consistency** — Added shared `resolveTeamName()` usage across mappers/services/actions/transactions to remove mixed team-name formatting and ensure stable naming everywhere. (`src/lib/espn/mappers.ts`, `src/services/league.service.ts`, `src/actions/settings.ts`, `src/services/transaction.service.ts`)
+- **Pro-team mapping correctness** — Player context now stores both team abbreviation (`proTeam`) and numeric ID (`proTeamId`), with downstream tools updated to avoid `NaN` schedule lookups. (`src/services/player.service.ts`, `src/types/fantasy.ts`, `src/agents/shared/tool-registry.ts`, `src/services/league.service.ts`)
+- **Matchup window standardization** — Introduced `getCurrentMatchupWindow()` and replaced duplicated date-window math in optimizer, supervisor, and tooling paths. (`src/lib/time/matchup-window.ts`, `src/services/optimizer.service.ts`, `src/agents/lineup-optimizer/*`, `src/agents/supervisor/agent.ts`, `src/services/league.service.ts`)
+- **Daily leaders stat selection** — Per-period extraction now prioritizes actual per-period stats (`statSourceId=0`, `statSplitTypeId=1`) and no longer falls back to `appliedAverage` for single-game fantasy points. (`src/services/daily-leaders.service.ts`)
+- **Live news freshness controls** — `searchNewsWithLiveFetch()` now supports background refresh mode, diacritic-safe matching, and stronger last-name + injury-context fallback matching; added `refresh_player_status` tool for explicit forced refresh requests. (`src/services/news.service.ts`, `src/agents/shared/tool-registry.ts`, `src/agents/supervisor/prompts.ts`)
+- **League sync completeness** — `sync-league` now writes `draft_detail`, `positional_ratings`, `live_scoring`, and roster snapshots via `mapEspnLeagueData()` to keep DB cache structurally complete. (`src/ops/sync-league.ts`)
+
+### Added — Test coverage for ESPN/data-mapping fixes (2026-02-25)
+
+- Added targeted tests for ESPN client URL/filter behavior, mapper invariants, constants maps, player service mapping, daily leaders extraction logic, and matchup window date boundaries. (`src/lib/espn/*.test.ts`, `src/services/*.test.ts`, `src/lib/time/*.test.ts`)
+
 ### Fixed — Eval Critical Failures & Sprint 2 (2026-02-25)
 
 - **math_integrity_03** — Agent refused to calculate when user provided explicit stats + scoring. Added prompt carve-out: "When the user supplies explicit stat values and scoring weights, calculate the fantasy total directly." (`src/agents/supervisor/prompts.ts`)
